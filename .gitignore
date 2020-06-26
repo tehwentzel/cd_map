@@ -4,3 +4,18 @@ data/
 .ipynb_checkpoints
 *.json
 
+src/.idea/
+src/.vscode/
+src/node_modules/
+src/build
+src/.DS_Store
+*.tgz
+src/my-app*
+src/template/src/__tests__/__snapshots__/
+src/lerna-debug.log
+src/npm-debug.log*
+src/yarn-debug.log*
+src/yarn-error.log*
+*/.changelog
+*.npm/
+src/yarn.lock
