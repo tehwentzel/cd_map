@@ -19,3 +19,6 @@ src/yarn-error.log*
 */.changelog
 *.npm/
 src/yarn.lock
+
+*__pycache__*
+*.pyc
