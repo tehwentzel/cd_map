@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+from Constants import Constants
 from Utils import *
 from CountyData import *
 
 app = Flask(__name__)
+CORS(app)
 counties = Countys()
 districts = Districts()
 covid_data = CovidData()
@@ -40,6 +43,12 @@ def get_fields():
         db = counties
     output = db.get_fields(ids=geoids,fields=fields)
     return jsonify(results=df_to_json(output))
+
+@app.route('/test_geojson',methods=['GET'])
+def get_geojson():
+    with open(Constants.test_json, 'r') as f:
+        geojson = json.load(f)
+        return jsonify(results=geojson)
 
 @app.route('/covid_rates',methods=['GET','POST'])
 def covid_rates():

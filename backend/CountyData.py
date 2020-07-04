@@ -7,12 +7,12 @@ from Constants import Constants
 
 class Region(ABC):
     
-    def __init__(self, root = Constants.county_demographics_file):
-        self.data = self.read_data(root)
+    def __init__(self, root = Constants.county_demographics_file, map_file = None):
+        self.data = self.read_data(root, map_file)
         self.fields = set(self.data.columns)
         self.ids = set(self.get_all_ids())
         
-    def read_data(self, root):
+    def read_data(self, root, map_file):
         return pd.read_json(root)
     
     def validate(self, id_list, axis = 0):
@@ -40,35 +40,86 @@ class Region(ABC):
     
 class Countys(Region):
     
-    def __init__(self,root=Constants.county_demographics_file):
-        super().__init__(root=root)
+    def __init__(self,root=Constants.county_demographics_file, map_file = Constants.county_border_file):
+        super().__init__(root=root, map_file = map_file)
         
-    def read_data(self, root):    
+    def read_data(self, root, map_file):    
         data = pd.read_json(root).T
         data.index.name = 'GEOID'
-        data = data.drop('dates',axis=1).sort_index()
+        data = data.drop(['dates','coordinates','geometry_type'],axis=1).sort_index()
+        
+        ids = data.index.values.astype(int).tolist()
+        geojson = self.read_map_data(set(ids), map_file)
+        geojson.index.name = "GEOID"
+        data = data.merge(geojson,on='GEOID')
         return data
     
-    def get_boundaries(self, ids = None):
-        return self.get_fields(ids, 'coordinates')
+    def read_map_data(self, valid_geoids, map_file = None):
+        if map_file is None:
+            map_file = Constants.county_border_file
+        with open(map_file,'r', encoding = 'latin1') as f:
+            cg = json.load(f)
+        
+        valid_regions = []
+        gids = []
+        for region in cg['features']:
+            props = region['properties']
+            gid = int(props['STATE'] + props['COUNTY'])
+            if gid not in valid_geoids:
+                print(props)
+                continue
+            entry = {'geometry': region['geometry'], 'type': region['type']}
+            entry['properies'] = {'GEOID': gid}
+            valid_regions.append(entry)
+            gids.append(gid)
+        map_df = pd.DataFrame(index = gids)
+        map_df['features'] = valid_regions
+        return map_df
     
 class Districts(Region):
 
-    def __init__(self, root = Constants.congressional_district_file):
-        super().__init__(root=root)
+    def __init__(self, root = Constants.congressional_district_file, map_file= Constants.district_border_file):
+        super().__init__(root=root, map_file = map_file)
         
-    def read_data(self, root):    
+    def read_data(self, root, map_file):    
         data = pd.read_json(root).T
         data.index.name = 'GEOID'
-        data = data.sort_index()
+        data = data.sort_index().drop(['coordinates','geometry_type'],axis=1)
+        
+        ids = data.index.values.astype(int).tolist()
+        geojson = self.read_map_data(set(ids), map_file)
+        geojson.index.name = "GEOID"
+        data = data.merge(geojson,on='GEOID')
         return data
+        
+    def read_map_data(self, valid_geoids, map_file = None):
+        if map_file is None:
+            map_file = Constants.county_border_file
+        with open(map_file,'r', encoding = 'latin1') as f:
+            cg = json.load(f)
+        
+        valid_regions = []
+        gids = []
+        for region in cg['features']:
+            props = region['properties']
+            gid = int(props['GEOID'])
+            if gid not in valid_geoids:
+                print(props)
+                continue
+            entry = {'geometry': region['geometry'], 'type': region['type']}
+            entry['properies'] = {'GEOID': gid}
+            valid_regions.append(entry)
+            gids.append(gid)
+        map_df = pd.DataFrame(index = gids)
+        map_df['features'] = valid_regions
+        return map_df
 
 class CovidData(Region):
     
     def __init__(self, root = Constants.covid_case_file):
-        super().__init__(root = root) 
+        super().__init__(root = root, map_file=None) 
         
-    def read_data(self, root):
+    def read_data(self, root, map_file):
         data = pd.read_csv(root).set_index('GEOID')
         return data
     
