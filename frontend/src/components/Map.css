@@ -9,7 +9,23 @@
     width: 100%;
 }
 
-path{
+.mapContainer{
+    height:100%;
+    width:100%;
+    position: relative;
+}
+
+path {
     stroke: 'black';
-    fill: 'white';
+    stroke-width: .1px;
+}
+.zoomable{
+    cursor: grab;
+}
+
+h2{
+    display: float;
+    width: 100%;
+    height: auto;
+    position: absolute;
 }

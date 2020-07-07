@@ -26,7 +26,7 @@ class Region(ABC):
     def get_all_ids(self):
         return self.data.index.values.astype(int).tolist()
     
-    def get_fields(self, ids = None, fields = None):
+    def defaults(self, ids, fields):
         if fields is None:
             fields = list(self.fields)
         else:
@@ -35,13 +35,21 @@ class Region(ABC):
             ids = list(self.ids)
         else:
             ids = self.validate(ids)
+        return ids, fields
+    
+    def get_fields(self, ids = None, fields = None, covid_fields = None, dates = None):
+        ids,fields = self.defaults(ids,fields)
         return self.data.loc[ids,fields]
     
     
 class Countys(Region):
     
-    def __init__(self,root=Constants.county_demographics_file, map_file = Constants.county_border_file):
-        super().__init__(root=root, map_file = map_file)
+    def __init__(self,
+                 root=Constants.county_demographics_file, 
+                 map_file = Constants.county_border_file,
+                 **covid_kwargs):
+        super().__init__(root=root)
+        self.covid_data = CovidData(**covid_kwargs)
         
     def read_data(self, root, map_file):    
         data = pd.read_json(root).T
@@ -66,7 +74,6 @@ class Countys(Region):
             props = region['properties']
             gid = int(props['STATE'] + props['COUNTY'])
             if gid not in valid_geoids:
-                print(props)
                 continue
             entry = {'geometry': region['geometry'], 'type': region['type']}
             entry['properies'] = {'GEOID': gid}
@@ -76,6 +83,16 @@ class Countys(Region):
         map_df['features'] = valid_regions
         return map_df
     
+    def get_avaliable_dates(self):
+        return self.covid_data.get_avaliable_dates()
+    
+    def get_fields(self,ids=None, fields=None, covid_fields = None, dates=None):
+        ids, fields = self.defaults(ids,fields)
+        subset = self.data.loc[ids,fields]
+        if covid_fields is not None:
+            subset = self.covid_data.add_fields(subset,dates=dates,fields=covid_fields)
+        return subset
+        
 class Districts(Region):
 
     def __init__(self, root = Constants.congressional_district_file, map_file= Constants.district_border_file):
@@ -104,7 +121,6 @@ class Districts(Region):
             props = region['properties']
             gid = int(props['GEOID'])
             if gid not in valid_geoids:
-                print(props)
                 continue
             entry = {'geometry': region['geometry'], 'type': region['type']}
             entry['properies'] = {'GEOID': gid}
@@ -116,6 +132,8 @@ class Districts(Region):
 
 class CovidData(Region):
     
+    default_fields = ['cases','deaths']
+    
     def __init__(self, root = Constants.covid_case_file):
         super().__init__(root = root, map_file=None) 
         
@@ -126,13 +144,35 @@ class CovidData(Region):
     def get_avaliable_dates(self):
         return sorted(np.unique(self.data.date))
     
+    def add_fields(self, 
+                   base_df = None,
+                   ids = None, 
+                   dates = None, 
+                   fields = None, 
+                   name = 'covid'):
+        covid_dict ={}
+        if fields is None:
+            fields = CovidData.default_fields
+        for i,v in self.data.groupby('GEOID'):
+            if ids is not None and i not in ids:
+                continue
+            if dates is not None:
+                v = v[v['date'].isin(dates)]
+            d = v.loc[:,['date'] + fields].to_dict(orient='record')
+            covid_dict[i] = {name: d}
+        data = pd.DataFrame(covid_dict).T
+        data.index.name = 'GEOID'
+        if base_df is not None:
+            return base_df.merge(data, on='GEOID')
+        return data
+    
     def by_date(self, date, ids = None, fields = None):
         if ids is None:
             ids = self.ids
         else:
             ids = self.validate(ids)
         if fields is None:
-            fields = ['cases','deaths']
+            fields = CovidData.default_fields
         else:
             fields = self.validate(fields,axis=1)
         if not isinstance(date, Iterable) or isinstance(date,str):
