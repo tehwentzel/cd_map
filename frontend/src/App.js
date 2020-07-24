@@ -3,6 +3,9 @@ import Grid from '@material-ui/core/Grid';
 import Slider from '@material-ui/core/Slider';
 import AppBar from '@material-ui/core/AppBar';
 import Toolbar from '@material-ui/core/Toolbar';
+import Backdrop from '@material-ui/core/Backdrop';
+import CircularProgress from '@material-ui/core/CircularProgress';
+import Tooltip from    '@material-ui/core/Tooltip';
 
 // import Container from 'react-bootstrap/Container';
 // import Row from "react-bootstrap/Row";
@@ -26,38 +29,31 @@ export default class App extends React.Component {
         this.dataService = new DataService();
         this.dataService.test();
 
-        let availableDates = this.dataService.getAvailableDates(this.props.defaultMapType);
         this.state = {
-            counties: true,
-            districts: false,
             name: 'vizAtHome',
-            availableDates: availableDates,
-            mapType: this.props.defaultMapType,
             mapVar: this.props.defaultMapVar,
-            mapDate: availableDates[availableDates.length-1]
+            mapDate: '3/1/20',
+            mapIsLoaded: false,
+            availableDates: ['3/1/20','4/30/20','7/9/20'],
         }
-        this.dummy = 0;
     }
 
     static defaultProps = {
-        defaultMapType: constants.COUNTY,
-        defaultMapVar: 'casesPerCapita'
+        defaultMapVar: 'none'
+    }
+
+    componentDidMount(){
+        this.dataService.getAvailableDates().then(dates => {
+            this.setState({availableDates: dates})
+        })
     }
 
     validateMapVar(){
-        let validVars = Utils.validMapVars(this.state.mapType);
-        console.log('update',validVars, this.state.mapVar)
+        //makes sure the selected variable to view in the map is somehting we have data one for the map type
+        let validVars = Utils.validMapVars();
         if(!Utils.itemInArray(this.state.mapVar, validVars)){
             this.setState({mapVar: validVars[0]})
         }
-    }
-
-    // compondentDidUpdate(){
-    
-    // }
-
-    handleMapTypeChange(event){
-        this.setState({mapType: event.currentTarget.value}, this.validateMapVar);
     }
 
     handleMapVarChange(event){
@@ -65,66 +61,83 @@ export default class App extends React.Component {
     }
 
     handleSliderChange(event, newValue){
-        let newDate = this.state.availableDates[newValue];
-        this.setState({mapDate: newDate})
+        this.dataService.getAvailableDates(true).then(dates =>{
+            console.log('date change', dates, newValue)
+            let newDate = dates[newValue];
+            this.setState({mapDate: newDate});
+        })
+    }
+
+
+    getDefaultMapDateIdx(availableDates){
+        return (availableDates.length > 0)? availableDates.length-1: 0;
+    }
+
+    toggleLoading(boolFlag){
+        this.setState({mapIsLoaded: boolFlag});
     }
 
     render(){
-        console.log(this.state)
+        var dateSliderLabel = function(idx){
+            let date = this.state.availableDates[idx];
+            if(date == this.state.mapDate){
+                return date
+            } else{
+                return ''
+            }
+        }.bind(this)
+
         return (
             <div className={'component-app'}>
                 <CssBaseline/>
-                <Grid container spacing={2}>
+                <Grid container spacing={4}>
                     <AppBar position='static'>
                         <Toolbar variant='dense'>
                             {Utils.unCamelCase(this.state.name)}
                         </Toolbar>
                     </AppBar>
-                    <Grid className={'body'} item xs={3}>
+                    <Grid className={'body'} item xs={4}>
                         <ControlPanel
-                            mapType={this.state.mapType}
+                            disabled={!this.state.mapIsLoaded}
                             mapVar={this.state.mapVar}
-                            handleMapTypeChange={this.handleMapTypeChange.bind(this)}
                             handleMapVarChange={this.handleMapVarChange.bind(this)}
                         />
                     </Grid>
-                    <Grid className={'body'} container item xs={9}>
-                        <Grid item xs={12}>
+                    <Grid className={'body'} id={'mapColumn'} container item xs={8}>
+                        <Grid item id={'mapBox'} xs={12}>
                             <MapContainer 
                             dataService={this.dataService} 
-                            mapType={this.state.mapType} 
+                            mapIsLoaded={this.state.mapIsLoaded}
+                            toggleLoading={this.toggleLoading.bind(this)}
                             mapVar={this.state.mapVar} 
                             mapDate={this.state.mapDate}
                             availableDates={this.state.availableDates}
                             />
                         </Grid>
-                        <Grid item xs={8}>
+                        <Grid item m={50} id={'dateSliderBox'} xs={12}>
                             <Slider
-                                defaultValue={this.state.availableDates.length-1}
+                                defaultValue={0}
                                 min={0}
+                                className={'slider'}
+                                disabled={!this.state.mapIsLoaded}
                                 max={this.state.availableDates.length -1}
-                                marks={Utils.markify(this.state.availableDates)}
+                                marks={Utils.markify(this.state.availableDates, this.state.mapDate)}
                                 step={null}
+                                valueLabelDisplay='off'
                                 onChange={this.handleSliderChange.bind(this)}
                             />
                         </Grid>
                     </Grid>
                 </Grid>
+                <Backdrop 
+                    className={'backdrop'} 
+                    open={!this.state.mapIsLoaded}
+                    invisible={this.state.mapIsLoaded}
+                >
+                    <CircularProgress color='inherit'/>
+                </Backdrop>
             </div>
         )
-        // return (
-        //     <Container>
-        //         <Jumbotron className="header flex-center" style={{'height':'10vh'}}>{this.state.name}</Jumbotron>
-        //         <Row style={{'height':'80vh'}}>
-        //             <Col className='flex-center' md={12} onMouseDown={this.handleEvent.bind(this)} onContextMenu={this.handleEvent.bind(this)}>
-        //                 <MapContainer dataService={this.dataService} mapType={this.state.mapType} mapVar={this.state.mapVar}/>
-        //             </Col>
-        //         </Row>
-        //         <Row style={{'height':'10vh'}}>
-        //             <Col className='flex-center'>Viz</Col>
-        //         </Row>
-        //     </Container>
-        // )
     }
 }
 

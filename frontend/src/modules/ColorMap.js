@@ -11,7 +11,8 @@ export default class ColorMap {
             'min': 0, //default minimum value, will change
             'max': 1, //default maximum value, will change
             'divergent': false, //wether to use divergent or sequential scaler
-            'symmetric': false//if true, max become the largest magnitude value, and min is -max
+            'symmetric': false,//if true, max become the largest magnitude value, and min is -max
+            'empty': false//just a white map please
         }
         if(props != null){
             this.props = Object.assign(this.props, props)
@@ -21,9 +22,12 @@ export default class ColorMap {
         }
     }
 
-    getColorScale(props){
+    getColorScale(props, transform){
+        this.props.empty = false //assume not emtpy unless specified.  I can't find a more elegatn solution?
         this.props = Object.assign(this.props, props)
-
+        if(this.props.empty){//empty = dummy variable
+            return (d => 'white')
+        }
         let min = this.props.min;
         let max = this.props.max;
         if(this.props.symmetric){
@@ -35,7 +39,9 @@ export default class ColorMap {
         var scale = scaler()
             .domain(domain)
             .interpolator(this.props.interpolator);
-        var transform = this.props.transform;
+        if(transform == null){
+            transform = this.props.transform;
+        }
         var interpolateScale = function(d){
             return scale(transform(d));
         }

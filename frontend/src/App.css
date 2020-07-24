@@ -3,9 +3,21 @@
     flex-direction: column;
     flex-wrap: wrap;
     height: 100%;
-    width: 100%;
+    width: 90%;
+    max-width: 1000px;
+    min-width: 500px;
+    margin: auto;
     text-align: center;
   }
+
+.backdrop{
+    height: 100%;
+    position: absolute;
+    width: 100%;
+    opacity: .8;
+    color: black;
+    z-index: 100;
+}
 
 .flex-center {
     display: flex;
@@ -30,9 +42,34 @@
     height: 80vh;
 }
 
-.row {
-    background-color: 'blue';
+.toolTip{
+    position: absolute;
+    margin: 0 auto;
+    background: rgba(200,200,200,.9);
+    opacity: 1;
+    padding: .5em;
+    font-size: 1em;
+    width: auto;
+    visibility: hidden;
+    max-width: 15em;
+    border: .1em solid black;
+    border-radius: .3em;
 }
-.col{
-    height: 100%;
+
+.MuiSlider-root > *{
+    height: .5em!important;
+    border-radius: 1em!important;
+    /* width: 90% !important;
+    border-radius: 100px !important; */
+}
+
+.MuiSlider-thumb{
+    margin-top: -.5em!important;
+    height: 1.5em!important;
+    width: 1.5em!important;
+}
+
+.MuiSlider-markLabel{
+    font-weight: bold!important;
+    font-size: 1.25em!important;
 }

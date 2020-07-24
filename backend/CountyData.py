@@ -37,7 +37,7 @@ class Region(ABC):
             ids = self.validate(ids)
         return ids, fields
     
-    def get_fields(self, ids = None, fields = None, covid_fields = None, dates = None):
+    def get_fields(self, ids = None, fields = None, covid_fields = None, dates=None):
         ids,fields = self.defaults(ids,fields)
         return self.data.loc[ids,fields]
     
@@ -47,9 +47,13 @@ class Countys(Region):
     def __init__(self,
                  root=Constants.county_demographics_file, 
                  map_file = Constants.county_border_file,
+                 premerge_covid = True,
                  **covid_kwargs):
         super().__init__(root=root)
         self.covid_data = CovidData(**covid_kwargs)
+        self.premerge_covid = premerge_covid
+        if premerge_covid:
+            self.data = self.covid_data.add_fields(self.data)
         
     def read_data(self, root, map_file):    
         data = pd.read_json(root).T
@@ -88,8 +92,10 @@ class Countys(Region):
     
     def get_fields(self,ids=None, fields=None, covid_fields = None, dates=None):
         ids, fields = self.defaults(ids,fields)
+        if covid_fields is not None and self.premerge_covid:
+            fields = fields + ['covid']
         subset = self.data.loc[ids,fields]
-        if covid_fields is not None:
+        if covid_fields is not None and not self.premerge_covid:
             subset = self.covid_data.add_fields(subset,dates=dates,fields=covid_fields)
         return subset
         
@@ -180,3 +186,34 @@ class CovidData(Region):
         else:
             subset = self.data[self.data.date.isin(date)]
         return subset.loc[ids,fields]
+    
+def to_coords(df):
+    n_coords = df.counter.sum()
+    coords = np.zeros((n_coords, 2))
+    pos = 0
+    for dummy,row in df.iterrows():
+        count = int(row.counter)
+        coords[pos:pos+count,:] = row.loc[['long1','lat1']].values
+        pos += count
+    return coords
+
+def load_tweet_coords(files = None, join = True, months = None):
+    if files is None:
+        files = Constants.tweet_files
+    point_data = {}
+    for key, file in files.items():
+        if months is not None and key not in months:
+            continue
+        df = pd.read_csv(file).rename({'long1': 'lon', 'lat1': 'lat', 'counter': 'counts'},axis=1)
+        point_data[key] = df.loc[:,['lon','lat','counts']].to_dict(orient='records')
+    if join:
+        joinedData = []
+        for key, vals in point_data.items():
+            joinedData.extend(vals)
+        return joinedData
+    return point_data
+
+def load_tweets():
+    with open(Constants.tweet_data,'r') as f:
+        tweets = json.load(f)
+        return tweets

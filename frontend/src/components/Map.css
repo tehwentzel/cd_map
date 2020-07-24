@@ -15,12 +15,23 @@
     position: relative;
 }
 
-path {
-    stroke: 'black';
-    stroke-width: .1px;
+.countyGroup {
+    stroke-width: 1px;
+    stroke: rgba(10,10,10,.25);
 }
+
+/* .countyGroupActive {
+    stroke-width: .4vh;
+    stroke: red;
+} */
+
+.singleCounty {
+    stroke-width: .5px;
+    stroke: black;
+}
+
 .zoomable{
-    cursor: grab;
+    cursor: pointer;
 }
 
 h2{
