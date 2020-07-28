@@ -5,7 +5,7 @@ import ColorMap from '../modules/ColorMap.js';
 import Utils from '../modules/Utils.js';
 import CountyStats from '../modules/CountyStats';
 import * as constants from '../modules/Constants.js';
-import { interpolate } from "d3";
+// import { interpolate, keys } from "d3";
 
 export default class Map extends React.Component {
 
@@ -20,6 +20,13 @@ export default class Map extends React.Component {
         this.dataAccessor = (d=>d);
         this.colorProps = {};
         this.bordersDrawn = false;
+    }
+
+    static defaultProps = {
+        spikeVar: 'cases',
+        spikeWidth: 7,
+        spikeStrokeWidth: .25,
+        maxSpikeHeight: 90
     }
 
     zoomed(){
@@ -54,6 +61,7 @@ export default class Map extends React.Component {
 
         Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
         Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
+        Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes')
     }
 
     destroy(){
@@ -85,16 +93,14 @@ export default class Map extends React.Component {
         d3.event.preventDefault()
         if(this.bordersDrawn){
             let emptyTransform = '';
-            let arr = []
-            // this.g.attr('transform',string);
-            this.setState({currentTransform: emptyTransform, activeCountyGroups: arr})
+            this.setState({currentTransform: emptyTransform})
         }
     }
 
     handleGroupMouseOver(d,i){
         var target = this.g.select('#boundary'+i);
         let strokeScale = this.state.currentTransform;
-        strokeScale = (strokeScale == '')? 1 : strokeScale.k;
+        strokeScale = (strokeScale === '')? 1 : strokeScale.k;
         target.style('stroke-width', 5/strokeScale)
             .style('stroke', 'red')
             .style('z-index', 100);
@@ -109,14 +115,19 @@ export default class Map extends React.Component {
     }
 
     handleSingleCountyMouseOver(d,i){
-        var target = this.g.select('#county'+d.GEOID)
-        var bbox = target.node().getBoundingClientRect();
-        var svgRect = d3.select('.map-svg').node().getBoundingClientRect();
-        var ttip = d3.select('#mapToolTip');
-        ttip.style('left', bbox.right - svgRect.left + bbox.width/4 + 'px')
-            .style('top', bbox.top  - svgRect.top + bbox.height/2 + 'px')
-            .style('visibility','visible')
-            .html(CountyStats.getSingleCountyToolTip(d, this.props.mapVar, this.props.mapDate));
+        var target = this.g.select('#county'+d.GEOID);
+        try{
+            var bbox = target.node().getBoundingClientRect();
+            var svgRect = d3.select('.map-svg').node().getBoundingClientRect();
+            var ttip = d3.select('#mapToolTip');
+            ttip.style('left', bbox.right - svgRect.left + bbox.width/4 + 'px')
+                .style('top', bbox.top  - svgRect.top + bbox.height/2 + 'px')
+                .style('visibility','visible')
+                .html(CountyStats.getSingleCountyToolTip(d, this.props.mapVar, this.props.mapDate));
+        } 
+        catch {
+            return
+        }
     }   
 
     handleGroupMouseOut(d,i){
@@ -133,27 +144,21 @@ export default class Map extends React.Component {
     }
 
     handleCountyGroupClick(event){
-        console.log(event.groupId)
-        let activeGroups = this.state.activeCountyGroups.slice()
-        activeGroups.push(event.groupId)
-        this.setState({activeCountyGroups: activeGroups})
+        var countyGroup = CountyStats.getCountyGroup(event);
+        this.props.toggleActiveCountyGroups(countyGroup)
     }
 
     handleSingleCountyClick(event){
-        let activeGroups = this.state.activeCountyGroups.slice()
-        let index = activeGroups.indexOf(event.parent)
-        if(index > -1){
-            activeGroups.splice(index, 1);
-            this.setState({activeCountyGroups: activeGroups})
-        }
+        var countyGroup = CountyStats.getParentCountyGroup(event);
+        this.props.toggleActiveCountyGroups(countyGroup)
     }
 
     drawCounties(){
         this.g.selectAll('.singleCounty').remove();
-        if(this.state.activeCountyGroups == null){
+        if(this.props.activeCountyGroups == null){
             return
         }
-        var countyDataGroups = this.props.data.filter(d => this.state.activeCountyGroups.indexOf(d.groupId) > -1);
+        var countyDataGroups = CountyStats.activeGroups(this.props.data, this.props.activeCountyGroups);
         var scaler = function(d){
             let value = this.props.dataAccessor(d);
             return this.props.dataScaler(value)
@@ -163,11 +168,10 @@ export default class Map extends React.Component {
         for(var countyData of countyDataGroups){
             let currCountys = this.g.selectAll('path')
                 .filter('.singleCounty')
-                .filter('.countyGroup' + countyData.groupId);
-            console.log(countyData)
+                .filter('.countyGroup' + CountyStats.getCountyGroup(countyData));
             currCountys.data(countyData.counties).enter()
                 .append('path')
-                .attr('class', d=>'singleCounty countyGroup'+d.parent)
+                .attr('class', d=>'singleCounty countyGroup'+CountyStats.getParentCountyGroup(d))
                 .attr('id', d=>'county' +d.GEOID)
                 .attr('d', d => this.path(d.features))
                 .attr('fill', getColor)
@@ -177,6 +181,7 @@ export default class Map extends React.Component {
                 .raise();
             currCountys.exit().remove();
         }
+        this.g.selectAll('.singleCountySpike').raise()
     }
 
     colorBoundaries(){
@@ -194,7 +199,6 @@ export default class Map extends React.Component {
         this.colorMap = new ColorMap();
         this.colorMap.fitValues(this.props.data, groupAccessor);
         let getColor = this.colorMap.getColorScale(this.props.colorProps);
-        var mapVar = this.props.mapVar;
         var borders = this.g.selectAll('path').filter('.countyGroup')
             .attr('fill', getColor)
             .on('mouseover', (d,i)=> this.handleGroupMouseOver(d,i) )
@@ -204,6 +208,116 @@ export default class Map extends React.Component {
         borders.exit().remove();
         this.drawCounties()
     }
+
+    drawCountySpikes(scale, colors){
+        this.g.selectAll('path').filter('.singleCountySpike').remove();
+        if(this.state.activeCountyGroups == null || this.props.data.length === undefined){
+            return
+        }
+
+        var activeCountyData = CountyStats.activeGroups(this.props.data,this.props.activeCountyGroups);
+
+        for(var countyData of activeCountyData){
+            var currCountys = this.g.selectAll('path')
+                .filter('.singleCountySpike')
+                .filter('#countySpike'+ CountyStats.getCountyPopulation(countyData));
+            currCountys.data(countyData.counties).enter()
+                .append('path')
+                .attr('class', 'singleCountySpike')
+                .attr('id', d=>'countySpike' + CountyStats.getParentCountyGroup(d))
+                .attr('d', d => this.drawCountySpike(d,scale))
+                .attr('stroke', colors.stroke)
+                .attr('strokeOpacity', colors.strokeOpacity)
+                .attr('fill', colors.fill)
+                .attr('fill-opacity', colors.fillOpacity)
+                .attr('stroke-width', this.props.spikeStrokeWidth)
+                .on('click', this.handleSingleCountyClick.bind(this))
+                .on('mouseover', (d,i) => this.handleSingleCountyMouseOver(d,i))
+                .on('mouseout', this.handleSingleCountyMouseOut)
+                .raise();
+            currCountys.exit().remove();
+        }
+    }
+
+    drawSpikes(){
+        if(this.props.data !== undefined){
+            this.g.selectAll('path').filter('.mapSpike').remove()
+
+            var validVars = constants.MAP_SPIKE_VARS.slice();
+            validVars.splice(validVars.indexOf('none'),1)
+            if(validVars.indexOf(this.props.spikeVar) < 0){
+                this.g.selectAll('path').selectAll('.singleCountySpike').remove();
+                return
+            }
+            var data = this.props.data;
+
+            var maxVal = this.props.dataService.maxGroupCovid(data, this.props.spikeVar)
+            var spikeScale = d3.scalePow(.5)
+                .domain([0,maxVal])
+                .range([0,this.props.maxSpikeHeight])
+
+            //turn off visibility for selected groups since we'll draw counties over them
+            var getVisiblity = function(d){
+                var cid = CountyStats.getCountyGroup(d);
+                var visibility = (this.props.activeCountyGroups.indexOf(cid) > -1)? 'hidden': 'visible';
+                return visibility
+            }.bind(this)
+            var colors = this.props.spikeColors;
+            var spikes = this.g.selectAll('path')
+                .filter('.mapSpike')
+                .data(data)
+                .enter().append('path')
+                .attr('class', 'mapSpike')
+                .attr('id', d=>'spike'+CountyStats.getCountyGroup(d))
+                .attr('d', (d) => this.drawSpike(d,spikeScale))
+                .attr('stroke', colors.stroke)
+                .attr('strokeOpacity', colors.strokeOpacity)
+                .attr('fill', colors.fill)
+                .attr('fill-opacity', colors.fillOpacity)
+                .attr('stroke-width', this.props.spikeStrokeWidth)
+                .attr('visibility', getVisiblity)
+                .on('mouseover', (d,i)=> this.handleGroupMouseOver(d,i) )
+                .on('mouseout', (d,i) => this.handleGroupMouseOut(d,i))
+                .on('click', this.handleCountyGroupClick.bind(this));
+
+            spikes.exit().remove()
+            this.drawCountySpikes(spikeScale, colors)
+        }
+    }
+
+    spikeCentroid = function(d){
+        var centroid = this.projection(d3.geoCentroid(d.features))
+        return 'translate(' + centroid[0] + ',' + centroid[1] + ')'
+    }
+
+    drawSpike = function(d, scale){
+        var width = this.props.spikeWidth;
+        var height = CountyStats.groupCovidData(d,this.props.spikeVar,this.props.mapDate);
+        if(height === 0){
+            return ''
+        }
+        height = scale(height/CountyStats.countyGroupPopulation(d));
+        var centroid = this.projection(d3.geoCentroid(d.features))
+        var path = ' M' + (centroid[0]-(width/2)).toString() + ',' + centroid[1];
+        path += ' L' + centroid[0] + ',' + (centroid[1]-height).toString();
+        path += ' L' + (centroid[0]+(width/2)).toString() + ',' + centroid[1];
+        return path;
+    }
+
+    drawCountySpike(d,scale){
+        var width = this.props.spikeWidth/2;
+        var height = CountyStats.covidData(d,this.props.spikeVar,this.props.mapDate);
+        if(height === 0){
+            return ''
+        }
+        height = scale(height/CountyStats.getCountyPopulation(d));
+        var centroid = this.projection(d3.geoCentroid(d.features));
+        var path = ' M' + (centroid[0]-(width/2)).toString() + ',' + centroid[1];
+        path += ' L' + centroid[0] + ',' + (centroid[1]-height).toString();
+        path += ' L' + (centroid[0]+(width/2)).toString() + ',' + centroid[1];
+        return path;
+    }
+
 
     componentDidMount(){
         //I coppied code and this gives the root element and I don't know why
@@ -222,15 +336,37 @@ export default class Map extends React.Component {
         }
     }
 
+    shouldDrawSpikes(prevProps){
+        if(this.props.data === undefined){
+            return false
+        }
+        else if(this.props.mapDate !== prevProps.mapDate || this.props.spikeVar !== prevProps.spikeVar){
+            return true
+        } 
+        else if(this.props.activeCountyGroups.length !== prevProps.activeCountyGroups.length){
+            return true
+        }
+        for(const [key,value] of Object.entries(this.props.spikeColors)){
+            if(value !== prevProps.spikeColors[key]){
+                return true
+            }
+        }
+        return (prevProps.data.length !== this.props.data.length)
+    }
+
     componentDidUpdate(prevProps){
         //update map
         //I'm assuming we only need to redraw borders when they change and the dataset size changes?
-        if(this.shouldDrawBorders(prevProps)){
-            Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
+        if(this.props.data !== undefined){
+            if(this.shouldDrawBorders(prevProps)){
+                Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
+            }
+            if(this.shouldDrawSpikes(prevProps)){
+                Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes')
+            }
+            Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
+            this.g.attr('transform', this.state.currentTransform)
         }
-        Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
-        this.g.attr('transform', this.state.currentTransform)
-        console.log('map update props', this.props)
     }
 
     componentWillUnmount(){

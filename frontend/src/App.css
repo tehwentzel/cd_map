@@ -4,7 +4,7 @@
     flex-wrap: wrap;
     height: 100%;
     width: 90%;
-    max-width: 1000px;
+    max-width: 1300px;
     min-width: 500px;
     margin: auto;
     text-align: center;
@@ -25,9 +25,18 @@
     justify-content: center;
 }
 
-.controlPanel{
+#controlPanel .controlPanel{
     width: 100%;
+    height: auto;
+}
+
+#secondaryChart{
     height: 100%;
+    width: 100%;
+}
+
+#dateSliderBox{
+    height:10vh;
 }
 
 .header{
@@ -40,6 +49,11 @@
 
 .body{
     height: 80vh;
+    direction: 'column';
+    width: 100%
+}
+.body > Grid{
+    height: auto;
 }
 
 .toolTip{

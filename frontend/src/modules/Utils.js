@@ -24,7 +24,7 @@ export default class Utils {
     static median(arr){
         let sortedArray = arr.slice();
         sortedArray.sort();
-        if(sortedArray.length == 1){
+        if(sortedArray.length === 1){
             return sortedArray[0]
         }
         else if(sortedArray.length%2 !== 0){
@@ -42,7 +42,6 @@ export default class Utils {
         var values = [];
         for(var dataPoint of dataGroup.counties){
             let dataVal = accessor(dataPoint);
-            dataVal = dataVal;
             if(weightAccessor !== undefined){
                 dataVal = dataVal*weightAccessor(dataPoint);
             }
@@ -53,6 +52,7 @@ export default class Utils {
     }
 
     static numberWithCommas(x){
+
         //from https://stackoverflow.com/a/2901298
         //should add commas to a number in thousands place?
         return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",");
@@ -60,12 +60,16 @@ export default class Utils {
 
     static emptyObject(obj){
         //checks if something is == {}, bascially
-        return (obj.constructor === Object && Object.keys(obj).length === 0)
+        try{
+            var flag = (obj.constructor === Object && Object.keys(obj).length === 0);
+            return flag
+        } catch{
+            return false
+        }
     }
 
     static itemInArray(item, targetArray){
         for(let target of targetArray){
-            console.log(item, target)
             if(item === target){
                 return true
             }
@@ -118,6 +122,10 @@ export default class Utils {
         }
     }
 
+    static formatPercent(string){
+        return Utils.unCamelCase(string+'PerCapita')
+    }
+
     static markify(stringArray, activeLabel){
         //converts array of things to a discrete format to use in sliders and maybe other stuff
         let stepSize = 100/(stringArray.length - 1);
@@ -140,8 +148,8 @@ export default class Utils {
 
     static markifiedLabelLookup(index, markArray){
         //take an array from markify and maps an index to a value, for the slider
-        var entry = markArray.filter(d => d.value == index);
-        entry = entry[0].label
+        var entry = markArray.filter(d => d.value === index);
+        entry = entry[0].label;
         return entry
     }
 
@@ -152,5 +160,17 @@ export default class Utils {
             console.log(error_string);
             console.log(err);
         }
+    }
+
+    static arrayEqual(a1, a2){
+        if(a1.length !== a2.length){
+            return false
+        }
+        for(let idx in a1){
+            if(a1[idx] !== a2){
+                return false
+            }
+        }
+        return true
     }
 }

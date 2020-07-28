@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from Constants import Constants
 from Utils import *
+from Stats import *
 
 app = Flask(__name__)
 CORS(app)
@@ -24,3 +25,8 @@ def get_geojson():
 def get_available_dates():
     dates = [key for key in county_groups.covid.iloc[0][0].keys()]
     return jsonify(results=dates)
+    
+@app.route('/test_post',methods=['POST'])
+def log_post():
+    data = request.get_json()
+    print('posted json', data)

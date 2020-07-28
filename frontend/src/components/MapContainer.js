@@ -5,7 +5,7 @@ import './Map.css';
 import '../App.css'
 import Utils from '../modules/Utils.js';
 import CountyStats from '../modules/CountyStats';
-import * as constants from '../modules/Constants.js';
+// import * as constants from '../modules/Constants.js';
 
 export default class MapContainer extends React.Component {
     constructor(props) {
@@ -16,12 +16,20 @@ export default class MapContainer extends React.Component {
         dataAggregator: Utils.mean,
         dataScaler: (d=>d),
         mapColorProps: {},
+        spikeColors: MapContainer.defaultSpikeConfig,
         dataWeightAccessor: (d=>1),
       };
     }
 
+    static defaultSpikeConfig = {
+        fill: 'yellow',
+        stroke:'black',
+        fillOpacity: .75,
+        strokeOpacity: 1
+    }
+
     componentDidMount() {
-        this.fetchData();
+        this.getConfig();
     }
 
     componentDidUpdate(prevProps) {
@@ -33,8 +41,11 @@ export default class MapContainer extends React.Component {
                 break;
             }
         }
+        if(this.props.data.length !== prevProps.data.length){
+            needsUpdate = true
+        }
         if(needsUpdate){
-            this.fetchData();
+            this.getConfig();
         }
     }
 
@@ -42,102 +53,123 @@ export default class MapContainer extends React.Component {
         return (
             <div className='mapContainer'>
                 <h2 className='flex-center'>{Utils.unCamelCase(this.props.mapVar)}</h2>
-                <Map data={this.state.data} 
+                <Map data={this.props.data} 
                 mapDate = {this.props.mapDate} 
                 mapVar = {this.props.mapVar}
                 dataAccessor={this.state.dataAccessor} 
                 dataScaler={this.state.dataScaler}
                 dataAggregator={this.state.dataAggregator}
-                dataWeigthAccessor={this.state.dataWeigthAccessor}
+                activeCountyGroups={this.props.activeCountyGroups}
+                toggleActiveCountyGroups={this.props.toggleActiveCountyGroups}
+                toggleLoading={this.props.toggleLoading}
+                dataService={this.props.dataService}
+                spikeVar={this.props.mapSpikeVar}
+                spikeColors={this.state.spikeColors}
+                dataWeightAccessor={this.state.dataWeightAccessor}
                 colorProps={this.state.mapColorProps}/>
             </div>
           )
     }
 
-    fetchData(){
-        //send flag to parent that it's loading
-        this.props.toggleLoading(false)
+    getConfig(){
         //defaults
+        var config = CountyStats.getVarConfig(this.props.mapVar, this.props.mapDate);
+        var scaler = config.scaler;
+        var aggregator = config.aggregator;
+        var accessor = config.accessor;
+        var weightAccessor = config.weightAcessor;
 
-        var scaler = (d => d);  //should be a transform on any final data
-        var aggregator = Utils.mean.bind(Utils); //how to aggregate data in county groups
-        var colorProps = {empty: false};
-        var weightAccessor = CountyStats.getCountyPopulation;
-        // var toolTipFormatter = d=> 'ID: ' + d.groupId;
+        //color properties, unique the the map
+        var colorProps = {
+            interpolator: d3.interpolateGreys,
+            divergent: false,
+            symmetric:false,
+            empty: false
+        };
+        var spikeColors = MapContainer.defaultSpikeConfig;
 
-        //not a default
-        var accessor = CountyStats.getAccessor(this.props.mapVar, this.props.mapDate); //gets the field from the json file
         switch(this.props.mapVar){
+            //special colorscheme as it's divergemnt red/blue
             case 'voting':
-                scaler = Utils.signedLog.bind(Utils);
-                aggregator = Utils.sum.bind(Utils);
                 colorProps = {
                     interpolator: d3.interpolateRdBu,
                     divergent: true,
                     symmetric: true,
                 }
-                break;
-
-            case 'income':
-                scaler = Math.log;
-                aggregator = Utils.mean.bind(Utils);
-                colorProps = {
-                    interpolator: d3.interpolateYlGn,
-                    divergent: false,
-                    symmetric: false,
+                spikeColors = {
+                    fill: 'black',
+                    stroke:'black',
+                    fillOpacity: .95,
+                    strokeOpacity: 1
                 }
                 break;
+            //twitter colors
             case 'tweetsPerCapita':
-                scaler = d=> d**.25;
-                aggregator = Utils.sum.bind(Utils);
                 colorProps = {
                     interpolator: d3.interpolateBlues,
                     divergent: false,
                     symmetric: false,
                     min: 0,
                 }
+                spikeColors = {
+                    fill: 'orange',
+                    stroke:'black',
+                    fillOpacity: .85,
+                    strokeOpacity: 1
+                }
                 break;
+            //orange = bad-sh
             case 'casesPerCapita':
-                scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
                 colorProps = {
                     interpolator: d3.interpolateOrRd,
                     divergent: false,
                     symmetric: false,
                     min: 0
                 }
+                spikeColors = {
+                    fill: 'black',
+                    stroke:'black',
+                    fillOpacity: .95,
+                    strokeOpacity: 1
+                }
                 break;
+            //red bc bad
             case 'deathsPerCapita':
-                scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
                 colorProps = {
                     interpolator: d3.interpolateReds,
                     divergent: false,
                     symmetric: false,
                     min: 0
                 }
+                spikeColors = {
+                    fill: 'black',
+                    stroke:'black',
+                    fillOpacity: .95,
+                    strokeOpacity: 1
+                }
+                break;
+            case 'none':
+                colorProps = {empty: true};
+                break;
+            case 'lowEducation':
+            case 'poverty':
+            case 'unemployment':
+            case 'underRepresentedMinorities':
+            case 'income':
                 break;
             default:
                 console.log('invalid var passed to map container', this.props.mapVar);
                 colorProps = {empty: true}
                 break;
         } 
-        this.loadData().then((d) => {
             this.setState({
                 mapColorProps: colorProps, 
-                data: d, 
                 dataAccessor: accessor, 
                 dataAggregator: aggregator, 
                 dataScaler: scaler,
+                spikeColors: spikeColors,
                 dataWeightAcessor: weightAccessor,
             });
-            this.props.toggleLoading(true);
-        });
-    }
-
-    async loadData(){
-        var tempData = await this.props.dataService.getMapData(true);
-        return tempData
     }
 
   }

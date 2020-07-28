@@ -5,21 +5,19 @@ import AppBar from '@material-ui/core/AppBar';
 import Toolbar from '@material-ui/core/Toolbar';
 import Backdrop from '@material-ui/core/Backdrop';
 import CircularProgress from '@material-ui/core/CircularProgress';
-import Tooltip from    '@material-ui/core/Tooltip';
-
-// import Container from 'react-bootstrap/Container';
-// import Row from "react-bootstrap/Row";
-// import Col from "react-bootstrap/Col";
-// import Jumbotron from 'react-bootstrap/Jumbotron';
+import Typography from '@material-ui/core/Typography';
+// import Tooltip from    '@material-ui/core/Tooltip';
 
 import MapContainer from './components/MapContainer'
-import * as constants from './modules/Constants.js';
+// import * as constants from './modules/Constants.js';
 import DataService from './modules/DataService';
 import Utils from './modules/Utils';
 import ControlPanel from './components/ControlPanel';
+import CovidTimeLine from './components/CovidTimeLine';
 
 import CssBaseline from '@material-ui/core/CssBaseline';
 import "./App.css";
+import CountyStats from "./modules/CountyStats";
 
 export default class App extends React.Component {
 
@@ -30,21 +28,27 @@ export default class App extends React.Component {
         this.dataService.test();
 
         this.state = {
+            mapData: {},
             name: 'vizAtHome',
             mapVar: this.props.defaultMapVar,
             mapDate: '3/1/20',
             mapIsLoaded: false,
+            mapSpikeVar: this.props.defaultMapSpikeVar,
             availableDates: ['3/1/20','4/30/20','7/9/20'],
+            activeCountyGroups: [],
         }
     }
 
     static defaultProps = {
-        defaultMapVar: 'none'
+        defaultMapVar: 'none',
+        defaultMapSpikeVar: 'cases'
     }
 
     componentDidMount(){
-        this.dataService.getAvailableDates().then(dates => {
-            this.setState({availableDates: dates})
+        this.dataService.getMapData(true).then(data =>{
+            this.dataService.getAvailableDates().then(dates => {
+                this.setState({mapData: data, availableDates: dates, mapIsLoaded: true})
+            })
         })
     }
 
@@ -60,9 +64,32 @@ export default class App extends React.Component {
         this.setState({mapVar: event.target.value})
     }
 
+    toggleActiveCountyGroups(clickedGroup){
+        let active = this.state.activeCountyGroups.slice();
+        let idx = active.indexOf(clickedGroup);
+        if(idx === -1){
+            active.push(clickedGroup);
+        } else{
+            active.splice(idx,1);
+        }
+        this.setState({activeCountyGroups: active})
+    }
+
+    handleMapSpikeVarChange(event){
+        this.setState({mapSpikeVar: event.target.value})
+    }
+
+    resetActiveCountys(){
+        this.setState({activeCountyGroups: []})
+    }
+
+    setAllCountiesActive(){
+        var allCountyGroups = this.state.mapData.map(d=>CountyStats.getCountyGroup(d));
+        this.setState({activeCountyGroups: allCountyGroups});
+    }
+
     handleSliderChange(event, newValue){
         this.dataService.getAvailableDates(true).then(dates =>{
-            console.log('date change', dates, newValue)
             let newDate = dates[newValue];
             this.setState({mapDate: newDate});
         })
@@ -77,15 +104,12 @@ export default class App extends React.Component {
         this.setState({mapIsLoaded: boolFlag});
     }
 
+    async loadData(){
+        var tempData = await this.props.dataService.getMapData(true);
+        return tempData;
+    }
+
     render(){
-        var dateSliderLabel = function(idx){
-            let date = this.state.availableDates[idx];
-            if(date == this.state.mapDate){
-                return date
-            } else{
-                return ''
-            }
-        }.bind(this)
 
         return (
             <div className={'component-app'}>
@@ -96,12 +120,31 @@ export default class App extends React.Component {
                             {Utils.unCamelCase(this.state.name)}
                         </Toolbar>
                     </AppBar>
-                    <Grid className={'body'} item xs={4}>
-                        <ControlPanel
-                            disabled={!this.state.mapIsLoaded}
-                            mapVar={this.state.mapVar}
-                            handleMapVarChange={this.handleMapVarChange.bind(this)}
-                        />
+                    <Grid container item className={'body'} xs={4}>
+                        <Grid item id={'controlPanel'} s={12}>
+                            <ControlPanel
+                                disabled={!this.state.mapIsLoaded}
+                                mapVar={this.state.mapVar}
+                                mapSpikeVar={this.state.mapSpikeVar}
+                                resetActiveCountys={this.resetActiveCountys.bind(this)}
+                                setAllCountiesActive={this.setAllCountiesActive.bind(this)}
+                                handleMapVarChange={this.handleMapVarChange.bind(this)}
+                                handleMapSpikeVarChange={this.handleMapSpikeVarChange.bind(this)}
+                            />
+                        </Grid>
+                        <Grid item id={'secondaryChart'} mt={10} s={12}>
+                            <CovidTimeLine 
+                                dataService={this.dataService} 
+                                mapVar={this.state.mapVar} 
+                                covidVar={this.state.mapSpikeVar}
+                                mapSpikeVar={this.state.mapSpikeVar}
+                                activeCountyGroups={this.state.activeCountyGroups}
+                                mapIsLoaded={this.state.mapIsLoaded}
+                                data={this.state.mapData}
+                                availableDates={this.state.availableDates}
+                                mapDate={this.state.mapDate}
+                            />
+                        </Grid>
                     </Grid>
                     <Grid className={'body'} id={'mapColumn'} container item xs={8}>
                         <Grid item id={'mapBox'} xs={12}>
@@ -110,11 +153,22 @@ export default class App extends React.Component {
                             mapIsLoaded={this.state.mapIsLoaded}
                             toggleLoading={this.toggleLoading.bind(this)}
                             mapVar={this.state.mapVar} 
+                            mapSpikeVar={this.state.mapSpikeVar}
+                            activeCountyGroups={this.state.activeCountyGroups}
+                            toggleActiveCountyGroups={this.toggleActiveCountyGroups.bind(this)}
                             mapDate={this.state.mapDate}
+                            data={this.state.mapData}
                             availableDates={this.state.availableDates}
                             />
                         </Grid>
-                        <Grid item m={50} id={'dateSliderBox'} xs={12}>
+                        <Grid item m={0} mt={4} id={'dateSliderBox'} xs={12}>
+                            <Typography
+                                align={'justify'}
+                                gutterBottom={false}
+                                variant={'h5'}
+                            >
+                                Select Date:
+                            </Typography>
                             <Slider
                                 defaultValue={0}
                                 min={0}

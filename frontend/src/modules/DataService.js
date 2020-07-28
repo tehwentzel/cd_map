@@ -1,5 +1,6 @@
 import * as constants from './Constants';
-import Utils from './Utils.js';
+import CountyStats from './CountyStats';
+// import Utils from './Utils.js';
 
 export default class DataService {
 
@@ -8,7 +9,7 @@ export default class DataService {
         this.api = this.axios.create({
             baseURL: constants.API_URL,
         })
-        this.cache = {};
+        this.cache = {maxCovid: {}};
         this.preloadCache()
     }
 
@@ -46,7 +47,27 @@ export default class DataService {
         });
     }
 
-
-
+    maxGroupCovid(groupData, key, useCache = true){
+        if(this.cache.availableDates === undefined){
+            return 0
+        }
+        if(this.cache.maxCovid[key] === undefined || !useCache){
+            var covidPerCapita = function(d,key,date){
+                let covid = CountyStats.groupCovidData(d,key,date);
+                return covid/CountyStats.countyGroupPopulation(d)
+            }
+            let dates = this.cache.availableDates;
+            var maxVal = 0;
+            for(const date of dates){
+                let covidValues = groupData.map(d=>covidPerCapita(d,key,date));
+                for(var value of covidValues){
+                    maxVal = (value > maxVal)? value: maxVal;
+                }
+            }
+            this.cache.maxCovid[key] = maxVal
+        } 
+        console.log('max', this.cache.maxCovid[key])
+        return this.cache.maxCovid[key]
+    }
 
 }

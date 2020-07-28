@@ -20,11 +20,6 @@
     stroke: rgba(10,10,10,.25);
 }
 
-/* .countyGroupActive {
-    stroke-width: .4vh;
-    stroke: red;
-} */
-
 .singleCounty {
     stroke-width: .5px;
     stroke: black;
