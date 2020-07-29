@@ -5,5 +5,5 @@ export const TWEETS = 'tweets';
 export const STATE = 'states';
 
 export const COUNTY_MAP_VARS = ['none','voting','income', 'lowEducation', 'unemployment','underRepresentedMinorities', 'tweetsPerCapita','casesPerCapita','deathsPerCapita']
-export const MAP_SPIKE_VARS = ['cases','deaths','none'];
+export const MAP_SPIKE_VARS = ['none','cases','deaths','tweets'];
 export const API_URL = 'http://localhost:5000/';

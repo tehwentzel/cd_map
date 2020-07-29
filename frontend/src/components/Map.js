@@ -20,13 +20,15 @@ export default class Map extends React.Component {
         this.dataAccessor = (d=>d);
         this.colorProps = {};
         this.bordersDrawn = false;
+        this.spikesDrawn = false;
     }
 
     static defaultProps = {
         spikeVar: 'cases',
-        spikeWidth: 7,
-        spikeStrokeWidth: .25,
-        maxSpikeHeight: 90
+        spikeWidth: 6,
+        spikeStrokeWidth: 1,
+        maxSpikeHeight: 20,
+        spikeHeightScaleExp: 2 //currently does a quantile transform and then applies a power tranform with this exp within it
     }
 
     zoomed(){
@@ -42,6 +44,7 @@ export default class Map extends React.Component {
             .attr('class','map-svg zoomable')
             .attr('width', this.width)
             .attr('height', this.height)
+            .style('background-color', '#e4e4e4')
             .on('contextmenu',this.handleRightClick.bind(this));
 
         this.scale = Math.min(this.width*1.35, this.height*3);
@@ -61,7 +64,7 @@ export default class Map extends React.Component {
 
         Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
         Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
-        Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes')
+        Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes');
     }
 
     destroy(){
@@ -99,9 +102,7 @@ export default class Map extends React.Component {
 
     handleGroupMouseOver(d,i){
         var target = this.g.select('#boundary'+i);
-        let strokeScale = this.state.currentTransform;
-        strokeScale = (strokeScale === '')? 1 : strokeScale.k;
-        target.style('stroke-width', 5/strokeScale)
+        target.style('stroke-width', 7)
             .style('stroke', 'red')
             .style('z-index', 100);
 
@@ -116,6 +117,9 @@ export default class Map extends React.Component {
 
     handleSingleCountyMouseOver(d,i){
         var target = this.g.select('#county'+d.GEOID);
+        target.style('stroke-width',5)
+            .style('stroke','red')
+            .style('z-index', 100)
         try{
             var bbox = target.node().getBoundingClientRect();
             var svgRect = d3.select('.map-svg').node().getBoundingClientRect();
@@ -138,7 +142,19 @@ export default class Map extends React.Component {
         ttip.style('visibility', 'hidden')
     }
 
-    handleSingleCountyMouseOut(event){
+    handleSingleCountyMouseOut(d){
+        try{
+            var target = this.g.select('#county'+d.GEOID);
+            target.style('stroke-width','')
+                .style('stroke','')
+                .style('z-index', '');
+        } catch {
+            d3.selectAll('.map-svg').select('#county'+d.GEOID)
+                .style('stroke-width','')
+                .style('stroke','')
+                .style('z-index', '');
+        }
+
         var ttip = d3.select('#mapToolTip');
         ttip.style('visibility', 'hidden')
     }
@@ -177,7 +193,7 @@ export default class Map extends React.Component {
                 .attr('fill', getColor)
                 .on('click', this.handleSingleCountyClick.bind(this))
                 .on('mouseover', (d,i) => this.handleSingleCountyMouseOver(d,i))
-                .on('mouseout', this.handleSingleCountyMouseOut)
+                .on('mouseout', d=> this.handleSingleCountyMouseOut(d))
                 .raise();
             currCountys.exit().remove();
         }
@@ -209,8 +225,7 @@ export default class Map extends React.Component {
         this.drawCounties()
     }
 
-    drawCountySpikes(scale, colors){
-        this.g.selectAll('path').filter('.singleCountySpike').remove();
+    drawCountySpikes(scale, colors, spikeAccessor){
         if(this.state.activeCountyGroups == null || this.props.data.length === undefined){
             return
         }
@@ -225,7 +240,7 @@ export default class Map extends React.Component {
                 .append('path')
                 .attr('class', 'singleCountySpike')
                 .attr('id', d=>'countySpike' + CountyStats.getParentCountyGroup(d))
-                .attr('d', d => this.drawCountySpike(d,scale))
+                .attr('d', d => this.drawCountySpike(d,scale,spikeAccessor))
                 .attr('stroke', colors.stroke)
                 .attr('strokeOpacity', colors.strokeOpacity)
                 .attr('fill', colors.fill)
@@ -240,22 +255,45 @@ export default class Map extends React.Component {
     }
 
     drawSpikes(){
-        if(this.props.data !== undefined){
-            this.g.selectAll('path').filter('.mapSpike').remove()
+        this.g.selectAll('path').filter('.mapSpike').remove();
+        this.g.selectAll('path').filter('.singleCountySpike').remove();
+        if(!Utils.emptyObject(this.props.data) & this.props.spikeVar !== 'none'){
 
-            var validVars = constants.MAP_SPIKE_VARS.slice();
-            validVars.splice(validVars.indexOf('none'),1)
-            if(validVars.indexOf(this.props.spikeVar) < 0){
-                this.g.selectAll('path').selectAll('.singleCountySpike').remove();
-                return
-            }
+            // var validVars = constants.MAP_SPIKE_VARS.slice();
+            // validVars.splice(validVars.indexOf('none'),1)
+            // if(validVars.indexOf(this.props.spikeVar) < 0){
+            //     this.g.selectAll('path').selectAll('.singleCountySpike').remove();
+            //     return
+            // }
             var data = this.props.data;
+            var spikeAccessor = CountyStats.getAccessor(this.props.spikeVar, this.props.mapDate);
+            var spikeScale;
+            switch(this.props.spikeVar){
+                case 'cases':
+                case 'deaths':
+                case 'casesPerCapita':
+                case 'deaths':
+                    // var maxVal = this.props.dataService.maxGroupCovid(data, this.props.spikeVar);
+                    // spikeScale = d3.scalePow(.25)
+                    //     .domain([0,maxVal])
+                    //     .range([0,this.props.maxSpikeHeight])
+                    // break;
+                case 'tweets':
+                default:
+                    var quantiles = CountyStats.globalQuantiles(data, spikeAccessor, 50, true);
+                    // console.log('quantiles', quantiles)
+                    var range = Utils.arrange(
+                        0, 
+                        this.props.maxSpikeHeight**(1/this.props.spikeHeightScaleExp), 
+                        quantiles.length-2);
+                    // console.log('range', range)
+                    spikeScale = d3.scaleLinear()
+                        .domain(quantiles)
+                        .range(range);
+                    break;
+            }
 
-            var maxVal = this.props.dataService.maxGroupCovid(data, this.props.spikeVar)
-            var spikeScale = d3.scalePow(.5)
-                .domain([0,maxVal])
-                .range([0,this.props.maxSpikeHeight])
-
+            console.log('scale',spikeAccessor, this.props, spikeScale(quantiles[0]), spikeScale(parseInt(.75*quantiles.length)))
             //turn off visibility for selected groups since we'll draw counties over them
             var getVisiblity = function(d){
                 var cid = CountyStats.getCountyGroup(d);
@@ -263,13 +301,14 @@ export default class Map extends React.Component {
                 return visibility
             }.bind(this)
             var colors = this.props.spikeColors;
+
             var spikes = this.g.selectAll('path')
                 .filter('.mapSpike')
                 .data(data)
                 .enter().append('path')
                 .attr('class', 'mapSpike')
                 .attr('id', d=>'spike'+CountyStats.getCountyGroup(d))
-                .attr('d', (d) => this.drawSpike(d,spikeScale))
+                .attr('d', (d) => this.drawSpike(d,spikeScale, spikeAccessor))
                 .attr('stroke', colors.stroke)
                 .attr('strokeOpacity', colors.strokeOpacity)
                 .attr('fill', colors.fill)
@@ -278,10 +317,12 @@ export default class Map extends React.Component {
                 .attr('visibility', getVisiblity)
                 .on('mouseover', (d,i)=> this.handleGroupMouseOver(d,i) )
                 .on('mouseout', (d,i) => this.handleGroupMouseOut(d,i))
-                .on('click', this.handleCountyGroupClick.bind(this));
+                .on('click', this.handleCountyGroupClick.bind(this))
+                .raise();
 
             spikes.exit().remove()
-            this.drawCountySpikes(spikeScale, colors)
+            this.drawCountySpikes(spikeScale, colors, spikeAccessor)
+            this.spikesDrawn = this.props.mapSpikeVar;
         }
     }
 
@@ -290,13 +331,14 @@ export default class Map extends React.Component {
         return 'translate(' + centroid[0] + ',' + centroid[1] + ')'
     }
 
-    drawSpike = function(d, scale){
+    drawSpike = function(d, scale, spikeAccessor){
         var width = this.props.spikeWidth;
-        var height = CountyStats.groupCovidData(d,this.props.spikeVar,this.props.mapDate);
+        var height = Utils.sum(d.counties.map(spikeAccessor));
         if(height === 0){
             return ''
         }
-        height = scale(height/CountyStats.countyGroupPopulation(d));
+        height = scale(height/CountyStats.countyGroupPopulation(d))**this.props.spikeHeightScaleExp;
+        height = Math.min(height, this.props.maxSpikeHeight);
         var centroid = this.projection(d3.geoCentroid(d.features))
         var path = ' M' + (centroid[0]-(width/2)).toString() + ',' + centroid[1];
         path += ' L' + centroid[0] + ',' + (centroid[1]-height).toString();
@@ -304,13 +346,14 @@ export default class Map extends React.Component {
         return path;
     }
 
-    drawCountySpike(d,scale){
+    drawCountySpike(d,scale,spikeAccessor){
         var width = this.props.spikeWidth/2;
-        var height = CountyStats.covidData(d,this.props.spikeVar,this.props.mapDate);
+        var height = spikeAccessor(d);
         if(height === 0){
             return ''
         }
-        height = scale(height/CountyStats.getCountyPopulation(d));
+        height = scale(height/CountyStats.getCountyPopulation(d))**this.props.spikeHeightScaleExp;
+        height = Math.min(height, this.props.maxSpikeHeight);
         var centroid = this.projection(d3.geoCentroid(d.features));
         var path = ' M' + (centroid[0]-(width/2)).toString() + ',' + centroid[1];
         path += ' L' + centroid[0] + ',' + (centroid[1]-height).toString();
@@ -337,8 +380,10 @@ export default class Map extends React.Component {
     }
 
     shouldDrawSpikes(prevProps){
-        if(this.props.data === undefined){
+        if(this.props.data === undefined || Utils.emptyObject(this.props.data)){
             return false
+        } else if(Utils.emptyObject(prevProps.data) || this.props.data.length !== prevProps.data.length){
+            return true
         }
         else if(this.props.mapDate !== prevProps.mapDate || this.props.spikeVar !== prevProps.spikeVar){
             return true
@@ -351,6 +396,9 @@ export default class Map extends React.Component {
                 return true
             }
         }
+        if(!this.spikesDrawn){
+            return true
+        }
         return (prevProps.data.length !== this.props.data.length)
     }
 
@@ -361,10 +409,10 @@ export default class Map extends React.Component {
             if(this.shouldDrawBorders(prevProps)){
                 Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
             }
+            Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
             if(this.shouldDrawSpikes(prevProps)){
                 Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes')
             }
-            Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
             this.g.attr('transform', this.state.currentTransform)
         }
     }

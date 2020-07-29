@@ -173,4 +173,31 @@ export default class Utils {
         }
         return true
     }
+
+    static quantiles(arr, nQuantiles){
+        nQuantiles = Math.min(arr.length-1, nQuantiles)
+        let vals = arr.slice()
+        vals.sort();
+        var quantiles = [];
+        let stepSize = vals.length/nQuantiles;
+        var currPos = 0;
+        while(currPos < vals.length){
+            quantiles.push(vals[parseInt(currPos)]);
+            currPos += stepSize
+        }
+        quantiles.push(vals[vals.length-1])
+        return quantiles
+    }
+
+    static arrange(start, stop, nSteps){
+        let stepSize = (stop - start)/nSteps;
+        let vals = [];
+        let currVal = start;
+        while(currVal < stop){
+            vals.push(currVal);
+            currVal += stepSize;
+        }
+        vals.push(stop)
+        return vals
+    }
 }

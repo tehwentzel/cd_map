@@ -24,7 +24,7 @@ export default class MapContainer extends React.Component {
     static defaultSpikeConfig = {
         fill: 'yellow',
         stroke:'black',
-        fillOpacity: .75,
+        fillOpacity: .95,
         strokeOpacity: 1
     }
 
@@ -33,7 +33,7 @@ export default class MapContainer extends React.Component {
     }
 
     componentDidUpdate(prevProps) {
-        let propsToCheck = ['mapVar','availableDates','mapDate'];
+        let propsToCheck = ['mapVar','mapDate','mapSpikeVar'];
         let needsUpdate = false;
         for(let prop of propsToCheck){
             if(this.props[prop] !== prevProps[prop]){
@@ -41,8 +41,15 @@ export default class MapContainer extends React.Component {
                 break;
             }
         }
-        if(this.props.data.length !== prevProps.data.length){
-            needsUpdate = true
+        let arrKeys = ['data', 'activeCountyGroups', 'availableDates'];
+        for(let key of arrKeys){
+            if(prevProps[key] === undefined & this.props[key] !== undefined){
+                needsUpdate = true;
+                break;
+            } else if(prevProps[key].length !== this.props[key].length){
+                needsUpdate = true;
+                break;
+            }
         }
         if(needsUpdate){
             this.getConfig();
@@ -99,11 +106,12 @@ export default class MapContainer extends React.Component {
                 spikeColors = {
                     fill: 'black',
                     stroke:'black',
-                    fillOpacity: .95,
+                    fillOpacity: .90,
                     strokeOpacity: 1
                 }
                 break;
             //twitter colors
+            case 'tweets':
             case 'tweetsPerCapita':
                 colorProps = {
                     interpolator: d3.interpolateBlues,
@@ -114,7 +122,7 @@ export default class MapContainer extends React.Component {
                 spikeColors = {
                     fill: 'orange',
                     stroke:'black',
-                    fillOpacity: .85,
+                    fillOpacity: .90,
                     strokeOpacity: 1
                 }
                 break;
@@ -129,7 +137,7 @@ export default class MapContainer extends React.Component {
                 spikeColors = {
                     fill: 'black',
                     stroke:'black',
-                    fillOpacity: .95,
+                    fillOpacity: .90,
                     strokeOpacity: 1
                 }
                 break;
@@ -144,13 +152,11 @@ export default class MapContainer extends React.Component {
                 spikeColors = {
                     fill: 'black',
                     stroke:'black',
-                    fillOpacity: .95,
+                    fillOpacity: .90,
                     strokeOpacity: 1
                 }
                 break;
             case 'none':
-                colorProps = {empty: true};
-                break;
             case 'lowEducation':
             case 'poverty':
             case 'unemployment':

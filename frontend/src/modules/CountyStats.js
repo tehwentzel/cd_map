@@ -19,10 +19,10 @@ export default class CountyStats {
         var weightAccessor; //how to weight counties when aggregating
         switch(key){
             case 'none':
-                accessor = d=>0;
+                accessor = d=>.1;
                 scaler = d=>d;
-                aggregator = Utils.mean.bind(Utils);
-                weightAccessor = d=>d;
+                aggregator = d=>.1;
+                weightAccessor = d=>1;
                 break;
             case 'voting':
                 accessor = CountyStats.getNetDemVotes;
@@ -54,6 +54,12 @@ export default class CountyStats {
                 aggregator = Utils.mean.bind(Utils);
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
+            case 'tweets':
+                accessor = CountyStats.getTweetCount;
+                scaler = d=> d**.25;
+                aggregator = Utils.sum.bind(Utils);
+                weightAccessor = CountyStats.getCountyPopulation;
+                break;
             case 'tweetsPerCapita':
                 accessor = function(d){
                     var tweets = CountyStats.getTweetCount(d);
@@ -64,28 +70,43 @@ export default class CountyStats {
                 aggregator = Utils.sum.bind(Utils);
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
+            case 'cases':
+                accessor = d => CountyStats.covidData(d,'cases',date);
+                scaler = d=>d**.25;
+                aggregator = Utils.mean.bind(Utils);
+                weightAccessor = CountyStats.getCountyPopulation;
+                break;
             case 'casesPerCapita':
                 accessor = function(d){
                     let val = CountyStats.covidData(d,'cases',date)
                     var pop = CountyStats.getCountyPopulation(d);
                     return 100*val/pop
-                };
+                }.bind(date);
                 scaler = d=>d**.25;
                 aggregator = Utils.mean.bind(Utils);
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
+            case 'deaths':
+                accessor = d => CountyStats.covidData(d,'deaths',date);
+                scaler = d=>d**.25;
+                aggregator = Utils.mean.bind(Utils);
+                weightAccessor = CountyStats.getCountyPopulation;
+                break
             case 'deathsPerCapita':
                 accessor = function(d){
                     let val = CountyStats.covidData(d,'deaths',date)
                     var pop = CountyStats.getCountyPopulation(d);
                     return 100*val/pop
-                };
+                }.bind(date);
                 scaler = d=>d**.25;
                 aggregator = Utils.mean.bind(Utils);
                 weightAccessor = CountyStats.getCountyPopulation;
                 break
             default:
-                accessor = null;
+                accessor = d=>.1;
+                scaler = d=>d;
+                aggregator = Utils.sum.bind(Utils);
+                weightAccessor = d=>1;
                 break;
         }
         var config = {
@@ -95,6 +116,29 @@ export default class CountyStats {
             weightAcessor: weightAccessor
         }
         return config
+    }
+
+
+    static getSecondaryAccessor(key, startDate, endDate, perCapita = true){
+        //get an accessor to calculate the thing to plot on the CovidTimeLine chart
+        //for specifically time change data.  Currenlty just covid
+        var accessor;
+        switch(key){
+            case 'cases':
+            case 'deaths':
+                if(startDate == endDate){
+                    accessor = d => CountyStats.covidData(d, key, endDate)
+                } else{
+                    accessor = d => CountyStats.countyCovidChange(d, key, [startDate, endDate], perCapita)[0]
+                }
+                break;
+            case 'tweets':
+                accessor = CountyStats.getTweetCount
+                break
+            default:
+                accessor = d => CountyStats.covidData(d, key, endDate);
+        }
+        return accessor;
     }
     
     static getCountyPopulation(data){
@@ -228,6 +272,26 @@ export default class CountyStats {
 
         return CountyStats.formatTTips(population,cases,deaths,tweets,netDemVotes,income);
     }
+
+    static globalQuantiles(cgData, accessor, nQuantiles, perCapita = false){
+        var flattened = [0]
+        var newAccessor = d => accessor(d);
+        if(perCapita){
+            newAccessor = d => accessor(d)/CountyStats.getCountyPopulation(d)
+        }
+        for(var countyGroup of cgData.slice()){
+            let counties = countyGroup.counties.map(newAccessor)
+            for(var val of counties){
+                if(val !== 0){
+                    flattened.push(val);
+                }
+            }
+        }
+        flattened.sort();
+        return Utils.quantiles(flattened, nQuantiles)
+    }
+
+    
 
     static formatTTips(population,cases,deaths,tweets,netDemVotes,income){
         var format = function(d,digits){ return Utils.numberWithCommas(d) + '(' + (100*d/population).toFixed(digits) + '%)'};

@@ -31,6 +31,7 @@ export default class App extends React.Component {
             mapData: {},
             name: 'vizAtHome',
             mapVar: this.props.defaultMapVar,
+            secondaryVar: this.props.defaultSecondaryVar,
             mapDate: '3/1/20',
             mapIsLoaded: false,
             mapSpikeVar: this.props.defaultMapSpikeVar,
@@ -41,7 +42,8 @@ export default class App extends React.Component {
 
     static defaultProps = {
         defaultMapVar: 'none',
-        defaultMapSpikeVar: 'cases'
+        defaultMapSpikeVar: 'none',
+        defaultSecondaryVar: 'none'
     }
 
     componentDidMount(){
@@ -61,7 +63,13 @@ export default class App extends React.Component {
     }
 
     handleMapVarChange(event){
-        this.setState({mapVar: event.target.value})
+        try{
+            let value = event.target.value;
+            if(value !== undefined & value !== 0){
+                this.setState({mapVar: event.target.value})
+            }
+        } 
+        catch{ }
     }
 
     toggleActiveCountyGroups(clickedGroup){
@@ -76,7 +84,23 @@ export default class App extends React.Component {
     }
 
     handleMapSpikeVarChange(event){
-        this.setState({mapSpikeVar: event.target.value})
+        try{
+            let value = event.target.value
+            if(value !== undefined & value !== 0){
+                this.setState({mapSpikeVar: value})
+            }
+        } 
+        catch{ }
+    }
+
+    handleSecondaryVarChange(event){
+        try{
+            let value = event.target.value
+            if(value !== undefined & value !== 0){
+                this.setState({secondaryVar: value})
+            }
+        } 
+        catch{ }
     }
 
     resetActiveCountys(){
@@ -114,45 +138,28 @@ export default class App extends React.Component {
         return (
             <div className={'component-app'}>
                 <CssBaseline/>
-                <Grid container spacing={4}>
-                    <AppBar position='static'>
-                        <Toolbar variant='dense'>
-                            {Utils.unCamelCase(this.state.name)}
-                        </Toolbar>
-                    </AppBar>
-                    <Grid container item className={'body'} xs={4}>
-                        <Grid item id={'controlPanel'} s={12}>
-                            <ControlPanel
-                                disabled={!this.state.mapIsLoaded}
-                                mapVar={this.state.mapVar}
-                                mapSpikeVar={this.state.mapSpikeVar}
-                                resetActiveCountys={this.resetActiveCountys.bind(this)}
-                                setAllCountiesActive={this.setAllCountiesActive.bind(this)}
-                                handleMapVarChange={this.handleMapVarChange.bind(this)}
-                                handleMapSpikeVarChange={this.handleMapSpikeVarChange.bind(this)}
-                            />
-                        </Grid>
-                        <Grid item id={'secondaryChart'} mt={10} s={12}>
-                            <CovidTimeLine 
-                                dataService={this.dataService} 
-                                mapVar={this.state.mapVar} 
-                                covidVar={this.state.mapSpikeVar}
-                                mapSpikeVar={this.state.mapSpikeVar}
-                                activeCountyGroups={this.state.activeCountyGroups}
-                                mapIsLoaded={this.state.mapIsLoaded}
-                                data={this.state.mapData}
-                                availableDates={this.state.availableDates}
-                                mapDate={this.state.mapDate}
-                            />
-                        </Grid>
+                <Grid container direction='row' spacing={4}>
+                    <Grid item id={'controlPanel'} className={'flex-center'} xs={12}>
+                        <ControlPanel
+                            disabled={!this.state.mapIsLoaded}
+                            mapVar={this.state.mapVar}
+                            secondaryVar={this.state.secondaryVar}
+                            mapSpikeVar={this.state.mapSpikeVar}
+                            resetActiveCountys={this.resetActiveCountys.bind(this)}
+                            setAllCountiesActive={this.setAllCountiesActive.bind(this)}
+                            handleMapVarChange={this.handleMapVarChange.bind(this)}
+                            handleMapSpikeVarChange={this.handleMapSpikeVarChange.bind(this)}
+                            handleSecondaryVarChange={this.handleSecondaryVarChange.bind(this)}
+                        />
                     </Grid>
-                    <Grid className={'body'} id={'mapColumn'} container item xs={8}>
+                    <Grid className={'body'} id={'mapColumn'} container item xs={12}>
                         <Grid item id={'mapBox'} xs={12}>
                             <MapContainer 
                             dataService={this.dataService} 
                             mapIsLoaded={this.state.mapIsLoaded}
                             toggleLoading={this.toggleLoading.bind(this)}
                             mapVar={this.state.mapVar} 
+                            secondaryVar={this.state.secondaryVar}
                             mapSpikeVar={this.state.mapSpikeVar}
                             activeCountyGroups={this.state.activeCountyGroups}
                             toggleActiveCountyGroups={this.toggleActiveCountyGroups.bind(this)}
@@ -179,6 +186,19 @@ export default class App extends React.Component {
                                 step={null}
                                 valueLabelDisplay='off'
                                 onChange={this.handleSliderChange.bind(this)}
+                            />
+                        </Grid>
+                        <Grid item id={'secondaryChart'} xs={12}>
+                            <CovidTimeLine 
+                                dataService={this.dataService} 
+                                mapVar={this.state.mapVar} 
+                                covidVar={this.state.mapSpikeVar}
+                                mapSpikeVar={this.state.mapSpikeVar}
+                                activeCountyGroups={this.state.activeCountyGroups}
+                                mapIsLoaded={this.state.mapIsLoaded}
+                                data={this.state.mapData}
+                                availableDates={this.state.availableDates}
+                                mapDate={this.state.mapDate}
                             />
                         </Grid>
                     </Grid>

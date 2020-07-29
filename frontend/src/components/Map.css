@@ -15,14 +15,8 @@
     position: relative;
 }
 
-.countyGroup {
-    stroke-width: 1px;
-    stroke: rgba(10,10,10,.25);
-}
-
-.singleCounty {
-    stroke-width: .5px;
-    stroke: black;
+.countyGroup .singleCounty{
+    stroke-width: 0auto;
 }
 
 .zoomable{

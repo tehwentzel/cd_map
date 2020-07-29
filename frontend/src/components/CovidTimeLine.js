@@ -13,9 +13,11 @@ export default class D3Chart extends React.Component {
 
     static defaultProps = {
         margin: 30,
+        marginTop: 5,
         rectPadding: 2,
         data: {},
-        covidVar: 'cases'
+        covidVar: 'cases',
+        perCapita: true
     }
 
     create(node){
@@ -79,7 +81,7 @@ export default class D3Chart extends React.Component {
         }
         //otherthings to change
         let propsToCheck = ['mapVar','mapDate'];
-        for(const propKey of propsToCheck){
+        for(let propKey of propsToCheck){
             if(this.props[propKey] !== prevProps[propKey]){
                 return true
             }
@@ -92,48 +94,60 @@ export default class D3Chart extends React.Component {
     }
 
     getPoints(){
-        console.log('chardata', this.data)
-        var covidRates = this.data.slice().map(d => {
-            let dates = [this.startDate,this.endDate];
-            //get covid rates per person
-            let rates = CountyStats.countyCovidChange(d,this.props.covidVar,dates); 
-            //add 1 to covid so we can do log scale
-            return rates[0]
-        })//.map(Math.sqrt)
+        // console.log('chardata', this.data)
+
+        var secondaryAccessor = CountyStats.getSecondaryAccessor(
+            this.props.covidVar, 
+            this.startDate, 
+            this.endDate, 
+            this.props.perCaptia)
+
+        var rates = this.data.slice().map(secondaryAccessor)
         
-        // let windowSize = Math.max(1, parseInt(covidRates.length/5))
-        var refValues = this.data.map(this.accessor)//.map(Utils.signedLog)
+        var refValues = this.data.map(this.accessor)
 
         var points = []
-        for(let idx in covidRates){
-            let name = CountyStats.getCountyName(this.data[idx]);
-            let isDemocrat = CountyStats.getNetDemVotes(this.data[idx]) > 0
-            let newPoint = {x: covidRates[idx], y: refValues[idx]}//, name: name, isDemocrat: isDemocrat};
+        for(let idx in rates){
+            // let name = CountyStats.getCountyName(this.data[idx]);
+            // let isDemocrat = CountyStats.getNetDemVotes(this.data[idx]) > 0
+            let newPoint = {y: rates[idx], x: refValues[idx]}//, name: name, isDemocrat: isDemocrat};
             points.push(newPoint)
         }
-        points.sort((x1,x2) => x1.y - x2.y)
+        points.sort((x1,x2) => x1.x - x2.x)
+
         return points
     }
 
     // Function to compute density
-    smoothYPoints(points, yMin, yMax, nPoints){
-        var smoothedPoints = [{y: yMin, x: 0}]
-        var windowWidth = (yMax - yMin)/nPoints;
-        let windowStart = 0;
-        while(windowStart < yMax){
+    smoothXPoints(points, xMin, xMax, nPoints){
+        var smoothedPoints = [{x: xMin, y: 0}]
+        var windowWidth = (xMax - xMin)/nPoints;
+        let windowStart = xMin;
+        while(windowStart < xMax){
             let windowEnd = windowStart + windowWidth;
-            let window = points.filter(d => d.y > windowStart)
-                .filter(d => d.y <= windowEnd);
-            console.log('window',window)
+            let window = points.filter(d => d.x > windowStart)
+                .filter(d => d.x <= windowEnd);
+
             if(window.length > 0){ 
                 let xMean = Utils.mean( window.map(d => d.x) )
                 let yMean = Utils.mean( window.map(d => d.y) )
                 smoothedPoints.push({x: xMean, y: yMean})
+            } 
+            else{
+                smoothedPoints.push({x: windowStart, y:0})
             }
             windowStart = windowEnd;
         }
-        smoothedPoints.push({y: yMax, x: 0})
+        smoothedPoints.push({x: xMax, y: 0})
         return smoothedPoints
+    }
+
+    getXScaleType(xVar){
+        if(xVar === 'voting'){
+            return d3.scaleLinear()
+        } else{
+            return d3.scalePow(.5);
+        }
     }
 
     draw(){
@@ -145,23 +159,19 @@ export default class D3Chart extends React.Component {
             return
         }
 
-        var rectHeight = (this.width - this.props.margin - this.props.rectPadding)/20;
-        var yMin = d3.min(points.map(d=>d.y));
-        var yMax = d3.max(points.map(d=>d.y));
+        var xMin = d3.min(points.map(d=>d.x));
+        var xMax = d3.max(points.map(d=>d.x));
 
-        points = this.smoothYPoints(points, yMin, yMax, 20)
-        console.log('smooth points', points)
+        points = this.smoothXPoints(points, xMin, xMax, 20)
 
-        let yScale = d3.scaleSymlog()
-            .domain([ yMin, yMax ])
-            .range([this.height-this.props.margin, this.props.margin])
+        let xScale = this.getXScaleType(this.props.mapVar)
+            .domain([ xMin, xMax ])
+            .range([this.props.margin, this.width - this.props.margin])
 
-        let xScale = d3.scalePow(.5)
-            .domain([0, d3.max(points.map(d=>d.x))] )
-            .range([this.props.margin ,this.width - this.props.margin])
+        let yScale = d3.scalePow(.5)
+            .domain([0, d3.max(points.map(d=>d.y))] )
+            .range([this.height - this.props.margin , this.props.marginTop])
 
-        // points.push({x: 0, y: yMax})
-        // points.splice(0,0, {x:0, y: yMin})
         var line = d3.line()
             .x(d=>xScale(d.x))
             .y(d=>yScale(d.y))
@@ -176,26 +186,9 @@ export default class D3Chart extends React.Component {
             .attr('stroke-width',1)
             .attr('fill-opacity', .25);
         curve.exit().remove()
-        // var rects = this.g.selectAll('rect')
-        //     .filter('.diffBar')
-        //     .data(points);
 
-        // rects.enter()
-        //     .append('rect')
-        //     .attr('class', 'diffBar')
-        //     .attr('width', (d) => xScale(d.x))
-        //     .attr('height', rectHeight)
-        //     .attr('y', (d) => yScale(d.y) -rectHeight/2)
-        //     .attr('x', this.props.margin)
-        //     .attr('fill', getColor)
-        //     .attr('stroke-opacity', 1)
-        //     .attr('stroke-width', 1)
-        //     .attr('fill-opacity', Math.max(.25, Math.sqrt(2/points.length)));
-
-        // rects.exit().remove()
-
-        var yAxis = d3.axisLeft(yScale).ticks(10, 's');
-        var xAxis = d3.axisBottom(xScale).ticks(5, '.000%')
+        var yAxis = d3.axisLeft(yScale).ticks(5, '.00%');
+        var xAxis = d3.axisBottom(xScale).ticks(20, 's')
         this.svg.selectAll('.axis').remove()
         this.svg.append('g')
             .attr('class','axis')
@@ -203,56 +196,28 @@ export default class D3Chart extends React.Component {
             .attr('transform', 'translate(' + this.props.margin + ',0)' )
             .call(yAxis)
 
-        let xTransform = this.height - this.props.margin + rectHeight/2;
-        console.log('xt', xTransform)
+        let xTransform = this.height - this.props.margin;
         this.svg.append('g')
             .attr('class','axis')
             .attr('id', 'xAxis')
             .attr('transform', 'translate(0,' + xTransform + ')')
             .call(xAxis)
-        // let minWindow = 2;
-        // let nPoints = Math.min(20, points.length);
-        // if(nPoints < 3){
-        //     return
-        // }
-    
-        // let density = this.smooth(points,nPoints,minWindow);
 
-        // let y = d3.scaleLinear()
-        //     .domain( d3.extent(points.map(d=>d.y)) )
-        //     .range([this.height-this.props.margin, this.props.margin]);
-
-        // let nTicks = Math.max(5, parseInt(points.length/2))
-        
-        // var kde = this.kernelDensityEstimator(this.kernelEpanechnikov(5), y.ticks(nTicks))
-        // var density = kde(points.map(d=>d.x));
-        // var xExtent = d3.extent(density.map(d=>d[1]));
-        // var yExtent = d3.extent(density.map(d=>d[0]));
-        // density.push([yExtent[1], xExtent[0]])
-        // density.splice(0, 0, [yExtent[0], xExtent[0]])
-
-        // let x = d3.scaleLinear()
-        //     .domain( xExtent )
-        //     .range([this.props.margin ,this.width - this.props.margin]);
-
-        // let line = d3.line()
-        //     // .curve(d3.curveCardinal.tension(1))
-        //     .y(d => y(d[0]))
-        //     .x(d => x(d[1]))
-        // console.log('density','covid', xExtent, this.props.mapVar, yExtent)
-        // console.log(density)
-
-        // this.g.selectAll('.kde').remove()
-        // this.g.append('path')
-        //     .attr('class', 'kde')
-        //     .datum(density)
-        //     .attr('d', line)
-        //     .attr('stroke-width', 2)
-        //     .attr('stroke', 'blue')
-        //     .attr('stroke-opacity', 1)
-        //     .attr('fill','blue')
-        //     .attr('fill-opacity', .4);
-
+        this.svg.selectAll('text').filter('.title').remove();
+        this.svg.append('text')
+            .attr('class','title h6')
+            .attr('x', this.width/2)
+            .attr('y', this.props.margin-10)
+            .html(Utils.unCamelCase(this.props.mapVar));
+        var textX = this.width-this.props.margin;
+        var textY = this.height/2 - this.props.margin - 10;
+        var textTransform = 'translate(' + textX +',' + textY + ')'
+        this.svg.append('text')
+            .attr('class','title h6')
+            .attr('transform',textTransform+'rotate(90)')
+            .attr('width',this.height/2)
+            .attr('height','auto')
+            .html('Δ' + Utils.unCamelCase(this.props.covidVar) )
     }
 
     componentDidMount(){
@@ -264,10 +229,10 @@ export default class D3Chart extends React.Component {
 
     componentDidUpdate(prevProps){
         if(this.shouldSetupData(prevProps)){
-            this.setupData()
+            Utils.wrapError(this.setupData.bind(this),  'Error in CovidTimeLine.setupData');
         }
         if(this.shouldDraw(prevProps)){
-            this.draw()
+            Utils.wrapError(this.draw.bind(this), 'Error in CovidTimeLine.draw');
         }
     }
 
@@ -279,6 +244,7 @@ export default class D3Chart extends React.Component {
     }
 
     render(){
-        return <div className='map-container' ref={this._setRef.bind(this)} />
+        return <div className='map-container' ref={this._setRef.bind(this)}>
+        </div>
     }
 }
