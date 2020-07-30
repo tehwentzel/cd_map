@@ -18,7 +18,11 @@ export default class Utils {
     }
 
     static mean(arr){
-        return Utils.sum(arr)/arr.length
+        let total = 0;
+        for(var val of arr){
+            total += val;
+        }
+        return total/arr.length
     }
 
     static median(arr){
@@ -179,9 +183,9 @@ export default class Utils {
         let vals = arr.slice()
         vals.sort();
         var quantiles = [];
-        let stepSize = vals.length/nQuantiles;
+        let stepSize = vals.length/(nQuantiles-1);
         var currPos = 0;
-        while(currPos < vals.length){
+        while(currPos < vals.length-stepSize){
             quantiles.push(vals[parseInt(currPos)]);
             currPos += stepSize
         }
@@ -190,7 +194,7 @@ export default class Utils {
     }
 
     static arrange(start, stop, nSteps){
-        let stepSize = (stop - start)/nSteps;
+        let stepSize = (stop - start)/(nSteps-1);
         let vals = [];
         let currVal = start;
         while(currVal < stop){

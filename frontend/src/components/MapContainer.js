@@ -33,7 +33,7 @@ export default class MapContainer extends React.Component {
     }
 
     componentDidUpdate(prevProps) {
-        let propsToCheck = ['mapVar','mapDate','mapSpikeVar'];
+        let propsToCheck = ['mapVar','mapDate','mapSpikeVar','secondaryVar'];
         let needsUpdate = false;
         for(let prop of propsToCheck){
             if(this.props[prop] !== prevProps[prop]){
@@ -63,16 +63,17 @@ export default class MapContainer extends React.Component {
                 <Map data={this.props.data} 
                 mapDate = {this.props.mapDate} 
                 mapVar = {this.props.mapVar}
-                dataAccessor={this.state.dataAccessor} 
+                secondaryVar={this.props.secondaryVar}
+                // dataAccessor={this.state.dataAccessor} 
                 dataScaler={this.state.dataScaler}
-                dataAggregator={this.state.dataAggregator}
+                // dataAggregator={this.state.dataAggregator}
                 activeCountyGroups={this.props.activeCountyGroups}
                 toggleActiveCountyGroups={this.props.toggleActiveCountyGroups}
                 toggleLoading={this.props.toggleLoading}
                 dataService={this.props.dataService}
                 spikeVar={this.props.mapSpikeVar}
                 spikeColors={this.state.spikeColors}
-                dataWeightAccessor={this.state.dataWeightAccessor}
+                // dataWeightAccessor={this.state.dataWeightAccessor}
                 colorProps={this.state.mapColorProps}/>
             </div>
           )

@@ -1,5 +1,6 @@
 // import * as constants from './Constants';
 import Utils from './Utils';
+import { mean, sum } from 'simple-statistics';
 
 export default class CountyStats {
 
@@ -15,50 +16,51 @@ export default class CountyStats {
     static getVarConfig(key, date){
         var accessor;//get data from a single county object
         var scaler; //scale the data when whe show it
-        var aggregator; //how to aggregate the vararible accross multiple counties
+        var aggregator; //how to aggregate given an array of values and weights for county Groups
         var weightAccessor; //how to weight counties when aggregating
         switch(key){
             case 'none':
-                accessor = d=>.1;
+                accessor = d=>0;
                 scaler = d=>d;
-                aggregator = d=>.1;
                 weightAccessor = d=>1;
+                aggregator = (d,w) => 1;
                 break;
             case 'voting':
-                accessor = CountyStats.getNetDemVotes;
-                scaler = Utils.signedLog.bind(Utils);
-                aggregator = Utils.sum.bind(Utils);
+                accessor = d=> CountyStats.getNetDemVotes(d)/CountyStats.getCountyPopulation(d);
+                scaler = d=>d;
                 weightAccessor = CountyStats.getCountyPopulation;
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); } //weighted mean by population
                 break;
             case 'income':
                 accessor = CountyStats.getMedianIncome;
                 scaler = Math.log;
-                aggregator = Utils.mean.bind(Utils);
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
             case 'unemployment':
                 accessor = CountyStats.getUnemploymentPct;
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
             case 'lowEducation':
                 accessor = CountyStats.getLowEducationPct;
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
+                aggregator = aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
             case 'underRepresentedMinorities':
                 accessor = CountyStats.getURMPct;
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
             case 'tweets':
                 accessor = CountyStats.getTweetCount;
                 scaler = d=> d**.25;
-                aggregator = Utils.sum.bind(Utils);
-                weightAccessor = CountyStats.getCountyPopulation;
+                //just get total tweets
+                aggregator  = (v,w) => { return Utils.sum(v); }
+                weightAccessor = d=>1;
                 break;
             case 'tweetsPerCapita':
                 accessor = function(d){
@@ -67,14 +69,14 @@ export default class CountyStats {
                     return tweets/pop;
                 };
                 scaler = d=> d**.25;
-                aggregator = Utils.sum.bind(Utils);
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
             case 'cases':
                 accessor = d => CountyStats.covidData(d,'cases',date);
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
-                weightAccessor = CountyStats.getCountyPopulation;
+                aggregator = (v,w) => { return Utils.sum(v); }
+                weightAccessor = d=>1;
                 break;
             case 'casesPerCapita':
                 accessor = function(d){
@@ -83,14 +85,14 @@ export default class CountyStats {
                     return 100*val/pop
                 }.bind(date);
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break;
             case 'deaths':
                 accessor = d => CountyStats.covidData(d,'deaths',date);
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
-                weightAccessor = CountyStats.getCountyPopulation;
+                aggregator = (v,w) => { return Utils.sum(v); }
+                weightAccessor = d=>1;
                 break
             case 'deathsPerCapita':
                 accessor = function(d){
@@ -99,13 +101,13 @@ export default class CountyStats {
                     return 100*val/pop
                 }.bind(date);
                 scaler = d=>d**.25;
-                aggregator = Utils.mean.bind(Utils);
+                aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
                 break
             default:
                 accessor = d=>.1;
                 scaler = d=>d;
-                aggregator = Utils.sum.bind(Utils);
+                aggregator = (v,w) => 1
                 weightAccessor = d=>1;
                 break;
         }
@@ -113,11 +115,26 @@ export default class CountyStats {
             accessor: accessor, 
             scaler: scaler, 
             aggregator: aggregator,
-            weightAcessor: weightAccessor
+            weightAccessor: weightAccessor
         }
         return config
     }
 
+    static getGroupAccessor(key, date){
+        var config = CountyStats.getVarConfig(key, date);
+        var groupAccessor = function(d){
+            var vals = [];
+            var totalWeights = [];
+            for(var county of CountyStats.getGroupCounties(d)){
+                let newVal = config.accessor(county);
+                let weight = config.weightAccessor(county)
+                vals.push(newVal*weight);
+                totalWeights.push(weight)
+            }
+            return config.aggregator(vals,totalWeights)
+        }.bind(config)
+        return groupAccessor
+    }
 
     static getSecondaryAccessor(key, startDate, endDate, perCapita = true){
         //get an accessor to calculate the thing to plot on the CovidTimeLine chart
@@ -147,6 +164,10 @@ export default class CountyStats {
 
     static getCountyName(data){
         return data.county_name;
+    }
+
+    static getGroupCounties(cgData){
+        return cgData.counties;
     }
 
     static getNetDemVotes(data){

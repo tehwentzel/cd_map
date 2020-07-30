@@ -1,7 +1,8 @@
 import React from "react";
 import * as d3 from "d3";
 import '../App.css';
-import ColorMap from '../modules/ColorMap.js';
+// import ColorMap from '../modules/ColorMap.js';
+import DualColorScale from '../modules/DualColorScale.js';
 import Utils from '../modules/Utils.js';
 import CountyStats from '../modules/CountyStats';
 import * as constants from '../modules/Constants.js';
@@ -16,7 +17,7 @@ export default class Map extends React.Component {
             currentTransform: '',
             activeCountyGroups: [],
         }
-        this.colorMap = new ColorMap();
+        // this.colorMap = new ColorMap();
         this.dataAccessor = (d=>d);
         this.colorProps = {};
         this.bordersDrawn = false;
@@ -174,12 +175,17 @@ export default class Map extends React.Component {
         if(this.props.activeCountyGroups == null){
             return
         }
+
         var countyDataGroups = CountyStats.activeGroups(this.props.data, this.props.activeCountyGroups);
-        var scaler = function(d){
-            let value = this.props.dataAccessor(d);
-            return this.props.dataScaler(value)
-        }.bind(this)
-        let getColor = this.colorMap.getColorScale(this.props.colorProps,scaler);
+
+        // var scaler = function(d){
+        //     let value = this.props.dataAccessor(d);
+        //     return this.props.dataScaler(value)
+        // }.bind(this)
+
+        // let getColor = this.colorMap.getColorScale(this.props.colorProps,scaler);
+
+        let getColor = this.colorScale.getCountyColor.bind(this.colorScale);
 
         for(var countyData of countyDataGroups){
             let currCountys = this.g.selectAll('path')
@@ -205,16 +211,20 @@ export default class Map extends React.Component {
             return;
         }
         var groupAccessor = function(d){
-            let stats = Utils.aggregateValues(d, 
-                this.props.dataAccessor, 
-                this.props.dataAggregator, 
-                this.props.dataWeightAccessor)
-            return this.props.dataScaler(stats)
+            // let stats = Utils.aggregateValues(d, 
+            //     this.props.dataAccessor, 
+            //     this.props.dataAggregator, 
+            //     this.props.dataWeightAccessor)
+            let ga = CountyStats.getGroupAccessor(this.props.mapVar, this.props.mapDate)
+            return this.props.dataScaler(ga(d))
         }.bind(this)
 
-        this.colorMap = new ColorMap();
-        this.colorMap.fitValues(this.props.data, groupAccessor);
-        let getColor = this.colorMap.getColorScale(this.props.colorProps);
+        // this.colorMap = new ColorMap();
+        // this.colorMap.fitValues(this.props.data, groupAccessor);
+        // let getColor = this.colorMap.getColorScale(this.props.colorProps);
+        this.colorScale = new DualColorScale(this.props.data, this.props.mapVar, this.props.secondaryVar, this.props.mapDate)
+        let getColor = this.colorScale.getGroupColor.bind(this.colorScale);
+
         var borders = this.g.selectAll('path').filter('.countyGroup')
             .attr('fill', getColor)
             .on('mouseover', (d,i)=> this.handleGroupMouseOver(d,i) )
@@ -257,16 +267,12 @@ export default class Map extends React.Component {
     drawSpikes(){
         this.g.selectAll('path').filter('.mapSpike').remove();
         this.g.selectAll('path').filter('.singleCountySpike').remove();
+        this.spikesDrawn = false;
         if(!Utils.emptyObject(this.props.data) & this.props.spikeVar !== 'none'){
 
-            // var validVars = constants.MAP_SPIKE_VARS.slice();
-            // validVars.splice(validVars.indexOf('none'),1)
-            // if(validVars.indexOf(this.props.spikeVar) < 0){
-            //     this.g.selectAll('path').selectAll('.singleCountySpike').remove();
-            //     return
-            // }
             var data = this.props.data;
-            var spikeAccessor = CountyStats.getAccessor(this.props.spikeVar, this.props.mapDate);
+            var spikeGroupAccessor = CountyStats.getGroupAccessor(this.props.spikeVar, this.props.mapDate);
+            var spikeAccessor = CountyStats.getAccessor(this.props.spikeVar, this.props.mapDate)
             var spikeScale;
             switch(this.props.spikeVar){
                 case 'cases':
@@ -308,7 +314,7 @@ export default class Map extends React.Component {
                 .enter().append('path')
                 .attr('class', 'mapSpike')
                 .attr('id', d=>'spike'+CountyStats.getCountyGroup(d))
-                .attr('d', (d) => this.drawSpike(d,spikeScale, spikeAccessor))
+                .attr('d', (d) => this.drawSpike(d,spikeScale, spikeGroupAccessor))
                 .attr('stroke', colors.stroke)
                 .attr('strokeOpacity', colors.strokeOpacity)
                 .attr('fill', colors.fill)
@@ -321,8 +327,8 @@ export default class Map extends React.Component {
                 .raise();
 
             spikes.exit().remove()
-            this.drawCountySpikes(spikeScale, colors, spikeAccessor)
-            this.spikesDrawn = this.props.mapSpikeVar;
+            this.drawCountySpikes(spikeScale, colors,spikeAccessor)
+            this.spikesDrawn = true;
         }
     }
 
@@ -331,9 +337,9 @@ export default class Map extends React.Component {
         return 'translate(' + centroid[0] + ',' + centroid[1] + ')'
     }
 
-    drawSpike = function(d, scale, spikeAccessor){
+    drawSpike = function(d, scale, spikeGroupAccessor){
         var width = this.props.spikeWidth;
-        var height = Utils.sum(d.counties.map(spikeAccessor));
+        var height = spikeGroupAccessor(d)
         if(height === 0){
             return ''
         }
