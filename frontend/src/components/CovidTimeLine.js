@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import "../App.css";
 import CountyStats from "../modules/CountyStats";
 import Utils from '../modules/Utils';
+import { mean, sum } from 'simple-statistics';
 
 export default class D3Chart extends React.Component {
 
@@ -54,11 +55,6 @@ export default class D3Chart extends React.Component {
         //accessor should be county level. add 1 so we can take the logscale easily
         this.accessor = CountyStats.getAccessor(this.props.mapVar, this.props.mapDate);
         this.data.sort((x,y) => this.accessor(x) > this.accessor(y))
-        //set the date to be to dates prior to the mapdate, or the first date.  may change later
-        // let endDatePos = this.props.availableDates.indexOf(this.props.mapDate);
-        // let startDatePos = (endDatePos > 2)? endDatePos-2: 0;
-        this.startDate =  this.props.availableDates[0]//this.props.availableDates[startDatePos];
-        this.endDate = this.props.mapDate;
 
     
     }
@@ -80,7 +76,7 @@ export default class D3Chart extends React.Component {
             return true
         }
         //otherthings to change
-        let propsToCheck = ['mapVar','mapDate'];
+        let propsToCheck = ['mapVar','mapDate','secondaryVar'];
         for(let propKey of propsToCheck){
             if(this.props[propKey] !== prevProps[propKey]){
                 return true
@@ -94,23 +90,14 @@ export default class D3Chart extends React.Component {
     }
 
     getPoints(){
-        // console.log('chardata', this.data)
-
-        var secondaryAccessor = CountyStats.getSecondaryAccessor(
-            this.props.covidVar, 
-            this.startDate, 
-            this.endDate, 
-            this.props.perCaptia)
-
-        var rates = this.data.slice().map(secondaryAccessor)
-        
-        var refValues = this.data.map(this.accessor)
+        var secondaryAccessor = CountyStats.getAccessor(this.props.secondaryVar, this.props.mapDate)
+        var rates = this.data.map(secondaryAccessor);
+        var refValues = this.data.map(this.accessor);
+        var population = this.data.map(CountyStats.getCountyPopulation);
 
         var points = []
         for(let idx in rates){
-            // let name = CountyStats.getCountyName(this.data[idx]);
-            // let isDemocrat = CountyStats.getNetDemVotes(this.data[idx]) > 0
-            let newPoint = {y: rates[idx], x: refValues[idx]}//, name: name, isDemocrat: isDemocrat};
+            let newPoint = {y: rates[idx], x: refValues[idx], pop: population[idx]}
             points.push(newPoint)
         }
         points.sort((x1,x2) => x1.x - x2.x)
@@ -119,8 +106,8 @@ export default class D3Chart extends React.Component {
     }
 
     // Function to compute density
-    smoothXPoints(points, xMin, xMax, nPoints){
-        var smoothedPoints = [{x: xMin, y: 0}]
+    smoothXPoints(points, xMin, xMax, yMin, nPoints){
+        var smoothedPoints = [{x: xMin, y: yMin}]
         var windowWidth = (xMax - xMin)/nPoints;
         let windowStart = xMin;
         while(windowStart < xMax){
@@ -129,20 +116,22 @@ export default class D3Chart extends React.Component {
                 .filter(d => d.x <= windowEnd);
 
             if(window.length > 0){ 
-                let xMean = Utils.mean( window.map(d => d.x) )
-                let yMean = Utils.mean( window.map(d => d.y) )
-                smoothedPoints.push({x: xMean, y: yMean})
+                let totalPop = sum( window.map(d => d.pop));
+                let xMean = sum( window.map(d => d.x*d.pop) )/totalPop;
+                let yMean = sum( window.map(d => d.y*d.pop) )/totalPop;
+                let newPoint ={x: xMean, y: yMean, pop: totalPop};
+                smoothedPoints.push(newPoint)
             } 
             else{
-                smoothedPoints.push({x: windowStart, y:0})
+                smoothedPoints.push({x: windowStart, y:yMin, pop: 0})
             }
             windowStart = windowEnd;
         }
-        smoothedPoints.push({x: xMax, y: 0})
+        smoothedPoints.push({x: xMax, y: yMin, pop: 0})
         return smoothedPoints
     }
 
-    getXScaleType(xVar){
+    getScaleType(xVar){
         if(xVar === 'voting'){
             return d3.scaleLinear()
         } else{
@@ -151,8 +140,8 @@ export default class D3Chart extends React.Component {
     }
 
     draw(){
-
-        this.g.selectAll('rect').filter('.diffBar').remove()
+        return
+        this.g.selectAll('path').filter('.diffCurve').remove()
         var points = this.getPoints()
 
         if(points.length === 0){
@@ -161,24 +150,25 @@ export default class D3Chart extends React.Component {
 
         var xMin = d3.min(points.map(d=>d.x));
         var xMax = d3.max(points.map(d=>d.x));
+        var yMin = d3.min(points.map(d=>d.y));
 
-        points = this.smoothXPoints(points, xMin, xMax, 20)
-
-        let xScale = this.getXScaleType(this.props.mapVar)
-            .domain([ xMin, xMax ])
+        points = this.smoothXPoints(points, xMin, xMax, yMin, 40)
+        console.log('smothpoint', points)
+        let xScale = this.getScaleType(this.props.mapVar)
+            .domain([xMin, xMax])
             .range([this.props.margin, this.width - this.props.margin])
 
-        let yScale = d3.scalePow(.5)
-            .domain([0, d3.max(points.map(d=>d.y))] )
+        let yScale = this.getScaleType(this.props.secondaryVar)
+            .domain( d3.extent(points.map(d=>d.y)) )
             .range([this.height - this.props.margin , this.props.marginTop])
 
         var line = d3.line()
             .x(d=>xScale(d.x))
             .y(d=>yScale(d.y))
             .curve(d3.curveBasis)
-        this.g.selectAll('path').filter('.diffCurve').remove()
+
+        
         var curve = this.g
-            //.enter()
             .append('path')
             .attr('class','diffCurve')
             .datum(points)
@@ -210,14 +200,15 @@ export default class D3Chart extends React.Component {
             .attr('y', this.props.margin-10)
             .html(Utils.unCamelCase(this.props.mapVar));
         var textX = this.width-this.props.margin;
-        var textY = this.height/2 - this.props.margin - 10;
+        var textY = this.height/2;
         var textTransform = 'translate(' + textX +',' + textY + ')'
         this.svg.append('text')
             .attr('class','title h6')
             .attr('transform',textTransform+'rotate(90)')
             .attr('width',this.height/2)
             .attr('height','auto')
-            .html('Δ' + Utils.unCamelCase(this.props.covidVar) )
+            .attr('text-anchor', 'middle')
+            .html(Utils.unCamelCase(this.props.secondaryVar) )
     }
 
     componentDidMount(){
@@ -228,6 +219,7 @@ export default class D3Chart extends React.Component {
     }
 
     componentDidUpdate(prevProps){
+        return
         if(this.shouldSetupData(prevProps)){
             Utils.wrapError(this.setupData.bind(this),  'Error in CovidTimeLine.setupData');
         }

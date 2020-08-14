@@ -5,6 +5,7 @@ import '../App.css';
 import DualColorScale from '../modules/DualColorScale.js';
 import Utils from '../modules/Utils.js';
 import CountyStats from '../modules/CountyStats';
+import textures from 'textures';
 import * as constants from '../modules/Constants.js';
 // import { interpolate, keys } from "d3";
 
@@ -21,14 +22,17 @@ export default class Map extends React.Component {
         this.dataAccessor = (d=>d);
         this.colorProps = {};
         this.bordersDrawn = false;
-        this.spikesDrawn = false;
+        this.glyphsDrawn = false;
     }
 
     static defaultProps = {
-        spikeVar: 'cases',
         spikeWidth: 6,
+        backgroundColor: 'white',
         spikeStrokeWidth: 1,
-        maxSpikeHeight: 20,
+        strokeColor: 'black',
+        aggregateCountys: false,
+        glyphsActive: true,
+        maxSpikeHeight: 30,
         spikeHeightScaleExp: 2 //currently does a quantile transform and then applies a power tranform with this exp within it
     }
 
@@ -45,7 +49,7 @@ export default class Map extends React.Component {
             .attr('class','map-svg zoomable')
             .attr('width', this.width)
             .attr('height', this.height)
-            .style('background-color', '#e4e4e4')
+            .style('background-color', this.props.backgroundColor)
             .on('contextmenu',this.handleRightClick.bind(this));
 
         this.scale = Math.min(this.width*1.35, this.height*3);
@@ -65,34 +69,205 @@ export default class Map extends React.Component {
 
         Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
         Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
-        Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes');
+        Utils.wrapError(this.drawGlyphs.bind(this), 'error in Map.drawSpikes');
     }
 
     destroy(){
         d3.selectAll('.map-svg').remove();
     }
 
-    getGroupStats(){
-        var groupValues = Utils.aggregateValues(this.props.data, 
-            this.props.dataAccessor, 
-            this.props.dataAggregator, 
-            this.props.dataScaler)
-        return groupValues
+    drawBorders(){
+        this.g.selectAll('path').filter('.county').remove();
+        if(Utils.emptyObject(this.props.data)){ return }
+        if(this.props.aggregateCountys){
+            this.drawCountyGroupBorders();
+        } else{
+            this.drawSingleCountys();
+        }
     }
 
-    drawBorders(){
+    drawCountyGroupBorders(){
         this.bordersDrawn = false;
-        var borders = this.g.selectAll('path').filter('.countyGroup')
+        
+        var borders = this.g.selectAll('path').filter('.county')
             .data(this.props.data)
             .enter().append('path')
-            .attr('class', 'countyGroup')
-            .attr('id', (d,i)=>{return 'boundary'+i.toString()})
+            .attr('class', 'county')
+            .attr('id', (d,i)=>{return 'countyGroup'+CountyStats.getCountyGroup(d)})
             .attr('d', d=> this.path(d.features));
         borders.exit().remove()
 
         this.bordersDrawn = true;
     }
 
+    drawSingleCountys(){
+        this.bordersDrawn = false;
+
+        for(var countyData of this.props.data){
+            var parentId = CountyStats.getCountyGroup(countyData)
+            let currCountys = this.g.selectAll('path')
+                .filter('.county')
+                .filter("[parentId='" + parentId + "']");
+            currCountys.data(countyData.counties).enter()
+                .append('path')
+                .attr('class', 'county')
+                .attr('parentId', parentId)
+                .attr('id', (d,i) =>'singleCounty' + CountyStats.getCountyGeoid(d))
+                .attr('d', d => this.path(d.features));
+            currCountys.exit().remove();
+        }
+        this.bordersDrawn = true;
+    }
+
+    colorBoundaries(){
+        if(Utils.emptyObject(this.props.data)){ return }
+        
+        this.colorScale = this.props.colorScale;
+
+        var getColor = this.colorScale.getCountyColor.bind(this.colorScale);;
+        var onClick = this.handleSingleCountyClick.bind(this);
+        var onMouseOver = (d,i) => this.handleSingleCountyMouseOver(d,i);
+        var onMouseOut = (d,i) => this.handleSingleCountyMouseOut(d,i);
+        var getGroupId = d => CountyStats.getParentCountyGroup(d);
+        var activeStrokeWidth = 1;
+
+        if(this.props.aggregateCountys){
+            getColor = this.colorScale.getGroupColor.bind(this.colorScale);
+            getGroupId = CountyStats.getCountyGroup;
+            // getClass = d => 'countyGroup';
+            onClick = this.handleCountyGroupClick.bind(this);
+            onMouseOver = (d,i)=> this.handleGroupMouseOver(d,i);
+            onMouseOut = (d,i) => this.handleGroupMouseOut(d,i);
+            activeStrokeWidth = 1.5;
+        }
+
+        var getStroke = function(d){
+            let groupId = getGroupId(d);
+            let isActive = this.props.activeCountyGroups.indexOf(groupId) !== -1;
+            return (isActive)? activeStrokeWidth: 0;
+        }.bind(this)
+
+        var counties = this.g.selectAll('path').filter('.county');
+        var patterns = [];
+        if(this.props.tertiaryVar !== 'none'){
+            var getTexture = (this.props.aggregateCountys)? this.colorScale.getGroupTexture.bind(this.colorScale): this.colorScale.getCountyTexture.bind(this.colorScale);
+            counties.data().forEach(d =>{
+                var t = getTexture(d);
+                patterns.push(t)
+            });
+            getColor = function(d,i){
+                var t = patterns[i];
+                this.svg.call(t)
+                return t.url();
+            }.bind(this)
+        }
+        
+        counties.attr('stroke', this.props.strokeColor)
+            .attr('fill', getColor)
+            .attr('stroke-width', getStroke)
+            .on('mouseover', onMouseOver.bind(this))
+            .on('mouseout', onMouseOut.bind(this))
+            .on('click', onClick.bind(this));
+
+        counties.exit().remove();
+    }
+
+    drawGlyphs(){
+        if(Utils.emptyObject(this.props.data) || !this.props.glyphsActive){ return }
+        this.g.selectAll('.glyph').remove()
+        if(this.props.secondaryVar === 'none'){return}
+        console.log('drawGlyphs');
+
+        var getCentroid = function(d){
+            var centroid = this.projection(d3.geoCentroid(d.features));
+            return centroid
+        }.bind(this)
+
+        var getGlyphColor = this.props.colorScale.getGlyphColor.bind(this.colorScale);
+        var getGlyphRadius = this.props.colorScale.getGlyphRadius.bind(this.colorScale);
+
+
+        for(var countyData of this.props.data){
+            var parentId = CountyStats.getCountyGroup(countyData)
+            let currCountys = this.g.selectAll('.glyph')
+                .filter("[parentId='" + parentId + "']")
+                .data(countyData.counties)
+                .enter()
+                .append('circle')
+                .attr('class', 'glyph')
+                .attr('id', d=> 'glyph'+CountyStats.getCountyGeoid(d))
+                .attr('parentId', parentId)
+                .attr('cx', d => getCentroid(d)[0])
+                .attr('cy', d => getCentroid(d)[1])
+                .attr('r', getGlyphRadius)
+                .attr('stroke-width', .5)
+                .attr('stroke','black')
+                .attr('fill', getGlyphColor)
+                .on('click', this.handleGlyphClick.bind(this))
+                .on('mouseover',(d,i) => this.handleGlyphMouseOver(d,i))
+                .on('mouseout', (d,i) => this.handleGlyphMouseOut(d,i))
+                .raise()
+
+            // currCountys.nodes().forEach(node =>{
+            //     this.colorScale.drawGlyph(node)
+            // }, this)
+            currCountys.exit().remove();
+        }
+        this.glyphsDrawn = true;
+    }
+
+    handleGlyphClick(d){
+        var countyGroup = CountyStats.getParentCountyGroup(d);
+        this.props.toggleActiveCountyGroups(countyGroup)
+    }
+
+    singleTTip(d){
+        return CountyStats.getSingleCountyToolTip(
+            d, 
+            this.props.mapDate, 
+            this.props.mapVar, 
+            this.props.secondaryVar, 
+            this.props.tertiaryVar
+        )
+    }
+
+    groupTTip(d){
+        return CountyStats.getGroupToolTip(
+            d, 
+            this.props.mapDate, 
+            this.props.mapVar, 
+            this.props.secondaryVar, 
+            this.props.tertiaryVar
+        )
+    }
+
+    handleGlyphMouseOver(d,i){
+        var target = this.g.select('#glyph'+CountyStats.getCountyGeoid(d));
+        var currRadius = target.node().getAttribute('r')
+        target.style('r', currRadius*3)
+            .style('stroke','red')
+            .style('z-index', 100);
+        try{
+            var bbox = target.node().getBoundingClientRect();
+            console.log('gmouseover', bbox);
+            var svgRect = d3.select('.map-svg').node().getBoundingClientRect();
+            var ttip = d3.select('#mapToolTip');
+            console.log('gm',ttip,svgRect)
+            ttip.style('left', bbox.right - svgRect.left + bbox.width/4 + 'px')
+                .style('top', bbox.top  - svgRect.top + bbox.height/2 + 'px')
+                .style('visibility','visible')
+                .html(this.singleTTip(d));
+        } 
+        catch {console.log('error on single mouseover')}
+    }
+
+    handleGlyphMouseOut(d,i){
+        var target = this.g.select('#glyph'+CountyStats.getCountyGeoid(d));
+        target.style('r', '')
+            .style('stroke', '');
+        var ttip = d3.select('#mapToolTip');
+        ttip.style('visibility', 'hidden');
+    }
     handleRightClick(event){
         d3.event.preventDefault()
         if(this.bordersDrawn){
@@ -102,22 +277,24 @@ export default class Map extends React.Component {
     }
 
     handleGroupMouseOver(d,i){
-        var target = this.g.select('#boundary'+i);
+        var target = this.g.select('#countyGroup'+CountyStats.getCountyGroup(d));
         target.style('stroke-width', 7)
             .style('stroke', 'red')
             .style('z-index', 100);
-
-        var bbox = target.node().getBoundingClientRect();
-        var svgRect = d3.select('.map-svg').node().getBoundingClientRect();
-        var ttip = d3.select('#mapToolTip');
-        ttip.style('left', bbox.right - svgRect.left + bbox.width/4 + 'px')
-            .style('top', bbox.top  - svgRect.top + bbox.height/2 + 'px')
-            .style('visibility','visible')
-            .html(CountyStats.getGroupToolTip(d, this.props.mapVar, this.props.mapDate));
+        try{
+            var bbox = target.node().getBoundingClientRect();
+            var svgRect = d3.select('.map-svg').node().getBoundingClientRect();
+            var ttip = d3.select('#mapToolTip');
+            ttip.style('left', bbox.right - svgRect.left + bbox.width/4 + 'px')
+                .style('top', bbox.top  - svgRect.top + bbox.height/2 + 'px')
+                .style('visibility','visible')
+                .html(this.groupTTip(d));
+        } 
+        catch {console.log('error on mouseover')}
     }
 
     handleSingleCountyMouseOver(d,i){
-        var target = this.g.select('#county'+d.GEOID);
+        var target = this.g.select('#singleCounty'+CountyStats.getCountyGeoid(d));
         target.style('stroke-width',5)
             .style('stroke','red')
             .style('z-index', 100)
@@ -128,29 +305,28 @@ export default class Map extends React.Component {
             ttip.style('left', bbox.right - svgRect.left + bbox.width/4 + 'px')
                 .style('top', bbox.top  - svgRect.top + bbox.height/2 + 'px')
                 .style('visibility','visible')
-                .html(CountyStats.getSingleCountyToolTip(d, this.props.mapVar, this.props.mapDate));
+                .html(this.singleTTip(d));
         } 
-        catch {
-            return
-        }
+        catch {console.log('error on single mouseover')}
     }   
 
     handleGroupMouseOut(d,i){
-        var target = this.g.select('#boundary'+i);
+        var target = this.g.select('#countyGroup'+CountyStats.getCountyGroup(d));
         target.style('stroke-width', '')
             .style('stroke', '');
         var ttip = d3.select('#mapToolTip');
-        ttip.style('visibility', 'hidden')
+        ttip.style('visibility', 'hidden');
     }
 
-    handleSingleCountyMouseOut(d){
+    handleSingleCountyMouseOut(d,i){
+        var geoid = CountyStats.getCountyGeoid(d)
         try{
-            var target = this.g.select('#county'+d.GEOID);
+            var target = this.g.select('#singleCounty'+geoid);
             target.style('stroke-width','')
                 .style('stroke','')
                 .style('z-index', '');
         } catch {
-            d3.selectAll('.map-svg').select('#county'+d.GEOID)
+            d3.selectAll('.map-svg').select('#singleCounty'+geoid)
                 .style('stroke-width','')
                 .style('stroke','')
                 .style('z-index', '');
@@ -170,204 +346,6 @@ export default class Map extends React.Component {
         this.props.toggleActiveCountyGroups(countyGroup)
     }
 
-    drawCounties(){
-        this.g.selectAll('.singleCounty').remove();
-        if(this.props.activeCountyGroups == null){
-            return
-        }
-
-        var countyDataGroups = CountyStats.activeGroups(this.props.data, this.props.activeCountyGroups);
-
-        // var scaler = function(d){
-        //     let value = this.props.dataAccessor(d);
-        //     return this.props.dataScaler(value)
-        // }.bind(this)
-
-        // let getColor = this.colorMap.getColorScale(this.props.colorProps,scaler);
-
-        let getColor = this.colorScale.getCountyColor.bind(this.colorScale);
-
-        for(var countyData of countyDataGroups){
-            let currCountys = this.g.selectAll('path')
-                .filter('.singleCounty')
-                .filter('.countyGroup' + CountyStats.getCountyGroup(countyData));
-            currCountys.data(countyData.counties).enter()
-                .append('path')
-                .attr('class', d=>'singleCounty countyGroup'+CountyStats.getParentCountyGroup(d))
-                .attr('id', d=>'county' +d.GEOID)
-                .attr('d', d => this.path(d.features))
-                .attr('fill', getColor)
-                .on('click', this.handleSingleCountyClick.bind(this))
-                .on('mouseover', (d,i) => this.handleSingleCountyMouseOver(d,i))
-                .on('mouseout', d=> this.handleSingleCountyMouseOut(d))
-                .raise();
-            currCountys.exit().remove();
-        }
-        this.g.selectAll('.singleCountySpike').raise()
-    }
-
-    colorBoundaries(){
-        if(Utils.emptyObject(this.props.data)){
-            return;
-        }
-        var groupAccessor = function(d){
-            // let stats = Utils.aggregateValues(d, 
-            //     this.props.dataAccessor, 
-            //     this.props.dataAggregator, 
-            //     this.props.dataWeightAccessor)
-            let ga = CountyStats.getGroupAccessor(this.props.mapVar, this.props.mapDate)
-            return this.props.dataScaler(ga(d))
-        }.bind(this)
-
-        // this.colorMap = new ColorMap();
-        // this.colorMap.fitValues(this.props.data, groupAccessor);
-        // let getColor = this.colorMap.getColorScale(this.props.colorProps);
-        this.colorScale = new DualColorScale(this.props.data, this.props.mapVar, this.props.secondaryVar, this.props.mapDate)
-        let getColor = this.colorScale.getGroupColor.bind(this.colorScale);
-
-        var borders = this.g.selectAll('path').filter('.countyGroup')
-            .attr('fill', getColor)
-            .on('mouseover', (d,i)=> this.handleGroupMouseOver(d,i) )
-            .on('mouseout', (d,i) => this.handleGroupMouseOut(d,i))
-            .on('click', this.handleCountyGroupClick.bind(this));
-
-        borders.exit().remove();
-        this.drawCounties()
-    }
-
-    drawCountySpikes(scale, colors, spikeAccessor){
-        if(this.state.activeCountyGroups == null || this.props.data.length === undefined){
-            return
-        }
-
-        var activeCountyData = CountyStats.activeGroups(this.props.data,this.props.activeCountyGroups);
-
-        for(var countyData of activeCountyData){
-            var currCountys = this.g.selectAll('path')
-                .filter('.singleCountySpike')
-                .filter('#countySpike'+ CountyStats.getCountyPopulation(countyData));
-            currCountys.data(countyData.counties).enter()
-                .append('path')
-                .attr('class', 'singleCountySpike')
-                .attr('id', d=>'countySpike' + CountyStats.getParentCountyGroup(d))
-                .attr('d', d => this.drawCountySpike(d,scale,spikeAccessor))
-                .attr('stroke', colors.stroke)
-                .attr('strokeOpacity', colors.strokeOpacity)
-                .attr('fill', colors.fill)
-                .attr('fill-opacity', colors.fillOpacity)
-                .attr('stroke-width', this.props.spikeStrokeWidth)
-                .on('click', this.handleSingleCountyClick.bind(this))
-                .on('mouseover', (d,i) => this.handleSingleCountyMouseOver(d,i))
-                .on('mouseout', this.handleSingleCountyMouseOut)
-                .raise();
-            currCountys.exit().remove();
-        }
-    }
-
-    drawSpikes(){
-        this.g.selectAll('path').filter('.mapSpike').remove();
-        this.g.selectAll('path').filter('.singleCountySpike').remove();
-        this.spikesDrawn = false;
-        if(!Utils.emptyObject(this.props.data) & this.props.spikeVar !== 'none'){
-
-            var data = this.props.data;
-            var spikeGroupAccessor = CountyStats.getGroupAccessor(this.props.spikeVar, this.props.mapDate);
-            var spikeAccessor = CountyStats.getAccessor(this.props.spikeVar, this.props.mapDate)
-            var spikeScale;
-            switch(this.props.spikeVar){
-                case 'cases':
-                case 'deaths':
-                case 'casesPerCapita':
-                case 'deaths':
-                    // var maxVal = this.props.dataService.maxGroupCovid(data, this.props.spikeVar);
-                    // spikeScale = d3.scalePow(.25)
-                    //     .domain([0,maxVal])
-                    //     .range([0,this.props.maxSpikeHeight])
-                    // break;
-                case 'tweets':
-                default:
-                    var quantiles = CountyStats.globalQuantiles(data, spikeAccessor, 50, true);
-                    // console.log('quantiles', quantiles)
-                    var range = Utils.arrange(
-                        0, 
-                        this.props.maxSpikeHeight**(1/this.props.spikeHeightScaleExp), 
-                        quantiles.length-2);
-                    // console.log('range', range)
-                    spikeScale = d3.scaleLinear()
-                        .domain(quantiles)
-                        .range(range);
-                    break;
-            }
-
-            console.log('scale',spikeAccessor, this.props, spikeScale(quantiles[0]), spikeScale(parseInt(.75*quantiles.length)))
-            //turn off visibility for selected groups since we'll draw counties over them
-            var getVisiblity = function(d){
-                var cid = CountyStats.getCountyGroup(d);
-                var visibility = (this.props.activeCountyGroups.indexOf(cid) > -1)? 'hidden': 'visible';
-                return visibility
-            }.bind(this)
-            var colors = this.props.spikeColors;
-
-            var spikes = this.g.selectAll('path')
-                .filter('.mapSpike')
-                .data(data)
-                .enter().append('path')
-                .attr('class', 'mapSpike')
-                .attr('id', d=>'spike'+CountyStats.getCountyGroup(d))
-                .attr('d', (d) => this.drawSpike(d,spikeScale, spikeGroupAccessor))
-                .attr('stroke', colors.stroke)
-                .attr('strokeOpacity', colors.strokeOpacity)
-                .attr('fill', colors.fill)
-                .attr('fill-opacity', colors.fillOpacity)
-                .attr('stroke-width', this.props.spikeStrokeWidth)
-                .attr('visibility', getVisiblity)
-                .on('mouseover', (d,i)=> this.handleGroupMouseOver(d,i) )
-                .on('mouseout', (d,i) => this.handleGroupMouseOut(d,i))
-                .on('click', this.handleCountyGroupClick.bind(this))
-                .raise();
-
-            spikes.exit().remove()
-            this.drawCountySpikes(spikeScale, colors,spikeAccessor)
-            this.spikesDrawn = true;
-        }
-    }
-
-    spikeCentroid = function(d){
-        var centroid = this.projection(d3.geoCentroid(d.features))
-        return 'translate(' + centroid[0] + ',' + centroid[1] + ')'
-    }
-
-    drawSpike = function(d, scale, spikeGroupAccessor){
-        var width = this.props.spikeWidth;
-        var height = spikeGroupAccessor(d)
-        if(height === 0){
-            return ''
-        }
-        height = scale(height/CountyStats.countyGroupPopulation(d))**this.props.spikeHeightScaleExp;
-        height = Math.min(height, this.props.maxSpikeHeight);
-        var centroid = this.projection(d3.geoCentroid(d.features))
-        var path = ' M' + (centroid[0]-(width/2)).toString() + ',' + centroid[1];
-        path += ' L' + centroid[0] + ',' + (centroid[1]-height).toString();
-        path += ' L' + (centroid[0]+(width/2)).toString() + ',' + centroid[1];
-        return path;
-    }
-
-    drawCountySpike(d,scale,spikeAccessor){
-        var width = this.props.spikeWidth/2;
-        var height = spikeAccessor(d);
-        if(height === 0){
-            return ''
-        }
-        height = scale(height/CountyStats.getCountyPopulation(d))**this.props.spikeHeightScaleExp;
-        height = Math.min(height, this.props.maxSpikeHeight);
-        var centroid = this.projection(d3.geoCentroid(d.features));
-        var path = ' M' + (centroid[0]-(width/2)).toString() + ',' + centroid[1];
-        path += ' L' + centroid[0] + ',' + (centroid[1]-height).toString();
-        path += ' L' + (centroid[0]+(width/2)).toString() + ',' + centroid[1];
-        return path;
-    }
-
-
     componentDidMount(){
         //I coppied code and this gives the root element and I don't know why
         this.create(this._rootNode,);
@@ -380,29 +358,24 @@ export default class Map extends React.Component {
         }
         else if(!this.bordersDrawn & this.props.data.length > 0){
             return true
-        } else{
+        } else if(this.props.aggregateCountys !== prevProps.aggregateCountys){
+            return true
+        }
+        else{
             return (prevProps.data.length !== this.props.data.length)
         }
     }
 
-    shouldDrawSpikes(prevProps){
+    shouldDrawGlyphs(prevProps){
         if(this.props.data === undefined || Utils.emptyObject(this.props.data)){
             return false
         } else if(Utils.emptyObject(prevProps.data) || this.props.data.length !== prevProps.data.length){
             return true
         }
-        else if(this.props.mapDate !== prevProps.mapDate || this.props.spikeVar !== prevProps.spikeVar){
+        else if(this.props.mapDate !== prevProps.mapDate || this.props.secondaryVar !== prevProps.secondaryVar){
             return true
         } 
-        else if(this.props.activeCountyGroups.length !== prevProps.activeCountyGroups.length){
-            return true
-        }
-        for(const [key,value] of Object.entries(this.props.spikeColors)){
-            if(value !== prevProps.spikeColors[key]){
-                return true
-            }
-        }
-        if(!this.spikesDrawn){
+        if(!this.glyphsDrawn){
             return true
         }
         return (prevProps.data.length !== this.props.data.length)
@@ -411,15 +384,17 @@ export default class Map extends React.Component {
     componentDidUpdate(prevProps){
         //update map
         //I'm assuming we only need to redraw borders when they change and the dataset size changes?
+        console.log('map Update', this.props, prevProps)
         if(this.props.data !== undefined){
             if(this.shouldDrawBorders(prevProps)){
                 Utils.wrapError(this.drawBorders.bind(this), 'error in Map.drawBorders');
             }
             Utils.wrapError(this.colorBoundaries.bind(this), 'error in Map.colorBoundaries');
-            if(this.shouldDrawSpikes(prevProps)){
-                Utils.wrapError(this.drawSpikes.bind(this), 'error in Map.drawSpikes')
+            if(this.shouldDrawGlyphs(prevProps)){
+                Utils.wrapError(this.drawGlyphs.bind(this), 'error in Map.drawGlyphs')
             }
             this.g.attr('transform', this.state.currentTransform)
+            this.g.selectAll('.glyph').raise()
         }
     }
 

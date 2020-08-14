@@ -178,20 +178,20 @@ export default class Utils {
         return true
     }
 
-    static quantiles(arr, nQuantiles){
-        nQuantiles = Math.min(arr.length-1, nQuantiles)
-        let vals = arr.slice()
-        vals.sort();
-        var quantiles = [];
-        let stepSize = vals.length/(nQuantiles-1);
-        var currPos = 0;
-        while(currPos < vals.length-stepSize){
-            quantiles.push(vals[parseInt(currPos)]);
-            currPos += stepSize
-        }
-        quantiles.push(vals[vals.length-1])
-        return quantiles
-    }
+    // static quantiles(arr, nQuantiles){
+    //     nQuantiles = Math.min(arr.length-1, nQuantiles)
+    //     let vals = arr.slice()
+    //     vals.sort();
+    //     var quantiles = [];
+    //     let stepSize = vals.length/(nQuantiles-1);
+    //     var currPos = 0;
+    //     while(currPos < vals.length-stepSize){
+    //         quantiles.push(vals[parseInt(currPos)]);
+    //         currPos += stepSize
+    //     }
+    //     quantiles.push(vals[vals.length-1])
+    //     return quantiles
+    // }
 
     static arrange(start, stop, nSteps){
         let stepSize = (stop - start)/(nSteps-1);

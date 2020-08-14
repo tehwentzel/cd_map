@@ -1,8 +1,6 @@
 import React from "react";
 import Grid from '@material-ui/core/Grid';
 import Slider from '@material-ui/core/Slider';
-import AppBar from '@material-ui/core/AppBar';
-import Toolbar from '@material-ui/core/Toolbar';
 import Backdrop from '@material-ui/core/Backdrop';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
@@ -32,9 +30,11 @@ export default class App extends React.Component {
             name: 'vizAtHome',
             mapVar: this.props.defaultMapVar,
             secondaryVar: this.props.defaultSecondaryVar,
+            tertiaryVar: this.props.defaultTertiaryVar,
             mapDate: '3/1/20',
             mapIsLoaded: false,
-            mapSpikeVar: this.props.defaultMapSpikeVar,
+            aggregateCountys: true,
+            aggregationLevel: 'groups',
             availableDates: ['3/1/20','4/30/20','7/9/20'],
             activeCountyGroups: [],
         }
@@ -42,8 +42,9 @@ export default class App extends React.Component {
 
     static defaultProps = {
         defaultMapVar: 'none',
-        defaultMapSpikeVar: 'none',
-        defaultSecondaryVar: 'none'
+        // defaultMapSpikeVar: 'none',
+        defaultSecondaryVar: 'none',
+        defaultTertiaryVar: 'none',
     }
 
     componentDidMount(){
@@ -83,11 +84,12 @@ export default class App extends React.Component {
         this.setState({activeCountyGroups: active})
     }
 
-    handleMapSpikeVarChange(event){
+    toggleAggregateCountys(event){
         try{
             let value = event.target.value
             if(value !== undefined & value !== 0){
-                this.setState({mapSpikeVar: value})
+                var aggregateFlag = (value === 'groups');
+                this.setState({aggregationLevel: value, aggregateCountys: aggregateFlag})
             }
         } 
         catch{ }
@@ -98,6 +100,16 @@ export default class App extends React.Component {
             let value = event.target.value
             if(value !== undefined & value !== 0){
                 this.setState({secondaryVar: value})
+            }
+        } 
+        catch{ }
+    }
+
+    handleTertiaryVarChange(event){
+        try{
+            let value = event.target.value
+            if(value !== undefined & value !== 0){
+                this.setState({tertiaryVar: value})
             }
         } 
         catch{ }
@@ -144,12 +156,14 @@ export default class App extends React.Component {
                             disabled={!this.state.mapIsLoaded}
                             mapVar={this.state.mapVar}
                             secondaryVar={this.state.secondaryVar}
-                            mapSpikeVar={this.state.mapSpikeVar}
+                            tertiaryVar={this.state.tertiaryVar}
+                            aggregationLevel={this.state.aggregationLevel}
                             resetActiveCountys={this.resetActiveCountys.bind(this)}
                             setAllCountiesActive={this.setAllCountiesActive.bind(this)}
                             handleMapVarChange={this.handleMapVarChange.bind(this)}
-                            handleMapSpikeVarChange={this.handleMapSpikeVarChange.bind(this)}
+                            toggleAggregateCountys={this.toggleAggregateCountys.bind(this)}
                             handleSecondaryVarChange={this.handleSecondaryVarChange.bind(this)}
+                            handleTertiaryVarChange={this.handleTertiaryVarChange.bind(this)}
                         />
                     </Grid>
                     <Grid className={'body'} id={'mapColumn'} container item xs={12}>
@@ -160,7 +174,8 @@ export default class App extends React.Component {
                             toggleLoading={this.toggleLoading.bind(this)}
                             mapVar={this.state.mapVar} 
                             secondaryVar={this.state.secondaryVar}
-                            mapSpikeVar={this.state.mapSpikeVar}
+                            tertiaryVar={this.state.tertiaryVar}
+                            aggregateCountys={this.state.aggregateCountys}
                             activeCountyGroups={this.state.activeCountyGroups}
                             toggleActiveCountyGroups={this.toggleActiveCountyGroups.bind(this)}
                             mapDate={this.state.mapDate}
@@ -192,8 +207,8 @@ export default class App extends React.Component {
                             <CovidTimeLine 
                                 dataService={this.dataService} 
                                 mapVar={this.state.mapVar} 
-                                covidVar={this.state.mapSpikeVar}
-                                mapSpikeVar={this.state.mapSpikeVar}
+                                secondaryVar={this.state.secondaryVar}
+                                covidVar={this.state.tertiaryVar}
                                 activeCountyGroups={this.state.activeCountyGroups}
                                 mapIsLoaded={this.state.mapIsLoaded}
                                 data={this.state.mapData}

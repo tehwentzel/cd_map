@@ -18,51 +18,83 @@ export default class CountyStats {
         var scaler; //scale the data when whe show it
         var aggregator; //how to aggregate given an array of values and weights for county Groups
         var weightAccessor; //how to weight counties when aggregating
+        var labelFormatter; //formats the return value for display
+        var name;
         switch(key){
             case 'none':
+                name = 'NA';
                 accessor = d=>0;
                 scaler = d=>d;
                 weightAccessor = d=>1;
                 aggregator = (d,w) => 1;
+                labelFormatter = (d) => '';
                 break;
             case 'voting':
+                name='Net Part Votes/Person'
                 accessor = d=> CountyStats.getNetDemVotes(d)/CountyStats.getCountyPopulation(d);
                 scaler = d=>d;
                 weightAccessor = CountyStats.getCountyPopulation;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); } //weighted mean by population
+                labelFormatter = function(d){
+                    d = (100*d).toFixed(0);
+                    if(d > 0){
+                        return d + '% (D)'
+                    } else{
+                        return Math.abs(d) + '% (R)'
+                    }
+                }
                 break;
             case 'income':
+                name = 'Median Income';
                 accessor = CountyStats.getMedianIncome;
                 scaler = Math.log;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => "$" + Utils.numberWithCommas(d.toFixed(0));
+                break;
+            case 'population':
+                name = 'Population (18+)';
+                accessor = CountyStats.getCountyPopulation;
+                scaler = Math.log;
+                aggregator = (v,w) => { return Utils.sum(v); }
+                weightAccessor = d => 1;
+                labelFormatter = (d) => Utils.numberWithCommas(d.toFixed(0));
                 break;
             case 'unemployment':
+                name = 'Unemployment';
                 accessor = CountyStats.getUnemploymentPct;
                 scaler = d=>d**.25;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => d.toFixed(1) + '%'
                 break;
             case 'lowEducation':
+                name = '% W/0 HS Degree';
                 accessor = CountyStats.getLowEducationPct;
                 scaler = d=>d**.25;
                 aggregator = aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => d.toFixed(1) + '%'
                 break;
             case 'underRepresentedMinorities':
+                name = '% Black/Hispanc';
                 accessor = CountyStats.getURMPct;
                 scaler = d=>d**.25;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => d.toFixed(1) + '%';
                 break;
             case 'tweets':
+                name = 'Unique Twitter Users';
                 accessor = CountyStats.getTweetCount;
                 scaler = d=> d**.25;
                 //just get total tweets
                 aggregator  = (v,w) => { return Utils.sum(v); }
                 weightAccessor = d=>1;
+                labelFormatter = (d) => Utils.numberWithCommas(d) + ' users';
                 break;
             case 'tweetsPerCapita':
+                name = 'Unique Twitter User';
                 accessor = function(d){
                     var tweets = CountyStats.getTweetCount(d);
                     var pop = CountyStats.getCountyPopulation(d);
@@ -71,14 +103,18 @@ export default class CountyStats {
                 scaler = d=> d**.25;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => (1000000*d).toFixed(0) + '/1M';
                 break;
             case 'cases':
+                name = 'Confirmed Cases';
                 accessor = d => CountyStats.covidData(d,'cases',date);
                 scaler = d=>d**.25;
                 aggregator = (v,w) => { return Utils.sum(v); }
                 weightAccessor = d=>1;
+                labelFormatter = (d) => Utils.numberWithCommas(d) + ' cases';
                 break;
             case 'casesPerCapita':
+                name = 'Confirmed Cases';
                 accessor = function(d){
                     let val = CountyStats.covidData(d,'cases',date)
                     var pop = CountyStats.getCountyPopulation(d);
@@ -87,14 +123,18 @@ export default class CountyStats {
                 scaler = d=>d**.25;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => (10000*d).toFixed(1) + '/10K';
                 break;
             case 'deaths':
+                name = 'Confirmed Deaths';
                 accessor = d => CountyStats.covidData(d,'deaths',date);
                 scaler = d=>d**.25;
                 aggregator = (v,w) => { return Utils.sum(v); }
                 weightAccessor = d=>1;
+                labelFormatter = (d) => Utils.numberWithCommas(d) + ' deaths';
                 break
             case 'deathsPerCapita':
+                name = 'Confirmed Deaths'
                 accessor = function(d){
                     let val = CountyStats.covidData(d,'deaths',date)
                     var pop = CountyStats.getCountyPopulation(d);
@@ -103,19 +143,24 @@ export default class CountyStats {
                 scaler = d=>d**.25;
                 aggregator = (v,w) => { return Utils.sum(v)/Utils.sum(w); }
                 weightAccessor = CountyStats.getCountyPopulation;
+                labelFormatter = (d) => (10000*d).toFixed(1) + '/10K';
                 break
             default:
+                name = 'NA';
                 accessor = d=>.1;
                 scaler = d=>d;
                 aggregator = (v,w) => 1
                 weightAccessor = d=>1;
+                labelFormatter  = (d) => d.toFixed(4);
                 break;
         }
         var config = {
             accessor: accessor, 
             scaler: scaler, 
             aggregator: aggregator,
-            weightAccessor: weightAccessor
+            weightAccessor: weightAccessor,
+            labelFormatter: labelFormatter,
+            name: name,
         }
         return config
     }
@@ -195,6 +240,10 @@ export default class CountyStats {
         return parseInt(d.urm_pct)
     }
 
+    static getCountyGeoid(d){
+        return parseInt(d.GEOID)
+    }
+
     static getUnemploymentPct(d){
         return parseFloat(d.clf_unemploy_pct)
     }
@@ -209,6 +258,10 @@ export default class CountyStats {
 
     static getCountyGroup(d){
         return parseInt(d.groupId);
+    }
+
+    static getCountyName(d){
+        return d.county_name;
     }
 
     static covidData(d, key, date){
@@ -266,72 +319,50 @@ export default class CountyStats {
         return Utils.sum(netVotes)
     }
 
-    static addToolTipStats(startString, cgData){
-        var counties = Utils.countyGroupStats(cgData);
-        var outString = startString + '</br>Total Pop: ' + counties.totalCVAP;
-        return outString
+    static additionalToolTipVars = ['population','cases','deaths'];
+
+
+    static getSingleCountyToolTip(data, date, pVar, sVar, tVar){
+         var string = CountyStats.getCountyName(data) + ' county</br>';
+         let vars = [pVar, sVar, tVar];
+         for(let additionalVar of CountyStats.additionalToolTipVars.slice()){
+             if(vars.indexOf(additionalVar) === -1){
+                 vars.push(additionalVar)
+             }
+         }
+         for(let v of vars){
+             if(v !== 'none'){
+                try{
+                    let config = CountyStats.getVarConfig(v,date);
+                    let accessor = config.accessor;
+                    let value = accessor(data);
+                    string += config.name + ': ' + config.labelFormatter(value) + '</br>';
+                } catch{}
+             }
+        
+         }
+         return string
     }
 
-    static getSingleCountyToolTip(data, mapVar, date){
-        var population = CountyStats.getCountyPopulation(data);
-        var cases = CountyStats.covidData(data, 'cases', date);
-        var deaths = CountyStats.covidData(data, 'deaths', date);
-        var tweets = CountyStats.getTweetCount(data);
-        var netDemVotes = CountyStats.getNetDemVotes(data);
-        var income = CountyStats.getMedianIncome(data);
-
-        return CountyStats.formatTTips(population,cases,deaths,tweets,netDemVotes,income);
-    }
-
-    static getGroupToolTip(data, mapVar, date){
-        var population = CountyStats.countyGroupPopulation(data);
-        var cases = CountyStats.groupCovidData(data, 'cases', date);
-        var deaths = CountyStats.groupCovidData(data, 'deaths', date);
-        var tweets = CountyStats.countyGroupTweetCount(data);
-        var netDemVotes = CountyStats.groupNetDemVotes(data);
-        var income = CountyStats.countyGroupMedianIncome(data);
-
-        return CountyStats.formatTTips(population,cases,deaths,tweets,netDemVotes,income);
-    }
-
-    static globalQuantiles(cgData, accessor, nQuantiles, perCapita = false){
-        var flattened = [0]
-        var newAccessor = d => accessor(d);
-        if(perCapita){
-            newAccessor = d => accessor(d)/CountyStats.getCountyPopulation(d)
-        }
-        for(var countyGroup of cgData.slice()){
-            let counties = countyGroup.counties.map(newAccessor)
-            for(var val of counties){
-                if(val !== 0){
-                    flattened.push(val);
-                }
-            }
-        }
-        flattened.sort();
-        return Utils.quantiles(flattened, nQuantiles)
-    }
-
-    
-
-    static formatTTips(population,cases,deaths,tweets,netDemVotes,income){
-        var format = function(d,digits){ return Utils.numberWithCommas(d) + '(' + (100*d/population).toFixed(digits) + '%)'};
-        var string = 'Population: ' + Utils.numberWithCommas(population);
-        string += '</br>';
-        string += 'Cases: ' + format(cases,1);
-        string += '</br>';
-        string += 'Deaths: ' + format(deaths,1);
-        string += '</br>';
-        string += 'Tweets: ' + format(tweets,1);
-        string += '</br>';
-        if(netDemVotes > 0){
-            string += 'Votes(D): ' + format(netDemVotes,1);
-        } else{
-            string += 'Votes(R): ' + format(Math.abs(netDemVotes),1);
-        }
-        string += '</br>';
-        string += 'Median Income: $' + Utils.numberWithCommas(income);
-        return string;
+    static getGroupToolTip(data, date, pVar, sVar, tVar){
+        var string = '';
+         let vars = [pVar, sVar, tVar];
+         for(let additionalVar of CountyStats.additionalToolTipVars.slice()){
+             if(vars.indexOf(additionalVar) === -1){
+                 vars.push(additionalVar)
+             }
+         }
+         for(let v of vars){
+             if(v !== 'none'){ 
+                try{
+                    let config = CountyStats.getVarConfig(v,date);
+                    let accessor = CountyStats.getGroupAccessor(v,date);
+                    let value = accessor(data);
+                    string += config.name + ': ' + config.labelFormatter(value) + '</br>';
+                } catch {}
+             }
+         }
+         return string
     }
 
     static activeGroups(data, active, inverse=false){

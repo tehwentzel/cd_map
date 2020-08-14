@@ -3,11 +3,15 @@ import Utils from '../modules/Utils';
 import Button from '@material-ui/core/Button';
 import ButtonGroup from '@material-ui/core/ButtonGroup';
 import InputLabel from '@material-ui/core/InputLabel';
+import Radio from '@material-ui/core/Radio';
+import RadioGroup from '@material-ui/core/RadioGroup';
 import Grid from '@material-ui/core/Grid';
 import MenuItem from '@material-ui/core/MenuItem';
 import AppBar from '@material-ui/core/AppBar';
 import Select from '@material-ui/core/Select';
 import FormControl from '@material-ui/core/FormControl';
+import FormControlLabel from '@material-ui/core/FormControlLabel';
+import FormLabel from '@material-ui/core/FormLabel';
 import "../App.css";
 
 import * as constants from '../modules/Constants';
@@ -27,23 +31,25 @@ export default class ControlPanel extends React.Component {
         //changes variable used to pick the color of the map
         //format with Utils.unCamelCase e.g. casesPerCapita => Cases Per Capita
         const mapVarDropDown = Utils.validMapVars().map(val => 
-            <MenuItem key={val} value={val} disabled={Boolean(this.props.disabled & val!==this.props.mapVar)}>{Utils.unCamelCase(val)}</MenuItem>
+            <MenuItem key={val} value={val} disabled={Boolean(this.props.disabled || val == this.props.mapVar)}>{Utils.unCamelCase(val)}</MenuItem>
         )
 
         const secondaryVarDropDown = Utils.validMapVars().map(val => 
-            <MenuItem key={val} value={val} disabled={Boolean(this.props.disabled & val!==this.props.secondaryVar)}>{Utils.unCamelCase(val)}</MenuItem>
+            <MenuItem key={val} value={val} disabled={Boolean(this.props.disabled || val === this.props.secondaryVar)}>{Utils.unCamelCase(val)}</MenuItem>
         )
 
-        //changes what variable the spikes on the map are
-        //format iwth Utils.formatPercent since I say 'cases' but reallys it's cases per capita so it fits into the other functions in other places better
-        const mapSpikeDropDown = constants.MAP_SPIKE_VARS.map(val => 
-            <MenuItem key={val} value={val} disabled={Boolean(this.props.disabled & val!==this.props.mapSpikeVar)}>{Utils.formatPercent(val)}</MenuItem>
+        const tertiaryVarDropDown = Utils.validMapVars().map(val => 
+            <MenuItem key={val} value={val} disabled={Boolean(this.props.disabled || val === this.props.tertiaryVar)}>{Utils.unCamelCase(val)}</MenuItem>
+        )
+
+        const aggregateDropDown = constants.AGGREGATION_LEVELS.slice().map( val =>
+            <MenuItem key={val} value={val} disabled={this.props.disabled}>{Utils.unCamelCase(val)}</MenuItem>
         )
 
         return (
             <div className='controlPanel'>
                 <AppBar color='default'>
-                <Grid container spacing={10} justify='space-around' direction='row' align-items='flex-end'>
+                <Grid container spacing={1} justify='space-around' direction='row' align-items='flex-end'>
                     <Grid item>
                         <FormControl>
                             <Select 
@@ -74,13 +80,26 @@ export default class ControlPanel extends React.Component {
                         <FormControl>
                             <Select 
                             disabled={this.props.disabled} 
-                            value={this.props.mapSpikeVar} 
-                            renderValue={d=>Utils.formatPercent(d)} 
-                            onClick={this.props.handleMapSpikeVarChange}
+                            value={this.props.tertiaryVar} 
+                            renderValue={d=>Utils.unCamelCase(d)} 
+                            onClick={this.props.handleTertiaryVarChange}
                             >
-                                {mapSpikeDropDown}
+                                {tertiaryVarDropDown}
                             </Select>
-                            <FormHelperText id='mapVarInputLabel'>{'Target Var.'}</FormHelperText>
+                            <FormHelperText id='mapVarInputLabel'>{'Tertiary Var.'}</FormHelperText>
+                        </FormControl>
+                    </Grid>
+                    <Grid item>
+                        <FormControl>
+                            <Select 
+                            disabled={this.props.disabled} 
+                            value={this.props.aggregationLevel} 
+                            renderValue={d=>Utils.unCamelCase(d)} 
+                            onClick={this.props.toggleAggregateCountys}
+                            >
+                                {aggregateDropDown}
+                            </Select>
+                            <FormHelperText id='mapVarInputLabel'>{'Aggregation Level'}</FormHelperText>
                         </FormControl>
                     </Grid>
                     {/* Button group to toggle between aggreggated and unaggregated counties on the map */}
